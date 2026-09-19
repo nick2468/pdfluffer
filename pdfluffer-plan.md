@@ -36,11 +36,11 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P1.12 Keyboard shortcuts from both the parent window and the iframe. Window title (spec 11.6, 11.7)
 - [x] P1.13 XFA banner, Signed chip, signature guard dialog, external link dialog (spec 12.4, 12.7, 12.8)
 - [ ] P1.14 Remove the spike page. Harness checks H1 to H10 pass (spec 16)
-- [ ] P1.15 Rust: `parse_pdf_args` with `cargo test` (spec 10.4, 15.8)
-- [ ] P1.16 Rust: the four commands, the atomic write, single instance, pending files (spec 10.3, 10.4)
-- [ ] P1.17 `tauriFileAdapter.ts`: dialogs, read, write, state, open requests, drag and drop, close request, title, external links (spec 10.3-10.5)
-- [ ] P1.18 `npm run check` and `cargo test` pass. Commit
-- [ ] P1.19 Give the user the USER checks U1 to U11 with exact steps (spec 16)
+- [x] P1.15 Rust: `parse_pdf_args` with `cargo test` (spec 10.4, 15.8)
+- [x] P1.16 Rust: the four commands, the atomic write, single instance, pending files (spec 10.3, 10.4)
+- [x] P1.17 `tauriFileAdapter.ts`: dialogs, read, write, state, open requests, drag and drop, close request, title, external links (spec 10.3-10.5)
+- [x] P1.18 `npm run check` and `cargo test` pass. Commit
+- [x] P1.19 Give the user the USER checks U1 to U11 with exact steps (spec 16)
 - [ ] P1.20 **USER** U1 to U11 pass. Apply the U4 decision rule if needed
 - [ ] P1.21 Phase 1 acceptance criteria met (spec 17)
 

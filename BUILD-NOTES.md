@@ -23,6 +23,19 @@ kept as chosen (spec 5): React 19.3.0, Vite 8.3.0, TypeScript 6.0.3,
 `@tauri-apps/cli` 2.11.4, `vitest` 4.1.11, `@cantoo/pdf-lib` 2.11.1. Rust crates resolved
 to `tauri` 2.11.5 and `tauri-build` 2.6.3.
 
+**Installer build (chip 6, plan P1.18).** `npm run tauri build`, with the Rust PATH set,
+succeeded on 2026-09-19 in 3 min 10 s of Rust compile. It made
+`src-tauri\target\release\bundle\nsis\PDFluffer_0.1.0_x64-setup.exe`, 7,418,050 bytes
+(about 7.1 MB). The NSIS tools were already present: nothing was downloaded. The builder
+did not run the installer. U6 is the user's.
+
+**`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
+and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
+output. Another `pdfluffer.exe` dev instance was already running (started 19:14 by a
+`cargo run` the builder did not start). So the new instance handed its arguments to it
+through single instance and quit, as designed. The builder could not see that window's
+log or drive it. No panic and no permission error appeared in its own log.
+
 ## Verified facts
 
 Checked 2026-09-19 (plan P0.8) against the vendored PDF.js 6.3.289, by searching
@@ -306,6 +319,37 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     - After a dialog closes, the browser puts focus back where it was. PDFluffer does not
       refocus the viewer.
     - `shortcutFor` and `isReloadKey` live in `src/viewer/shortcutFor.ts`.
+
+15. **`read_pdf` and `write_pdf` are `#[tauri::command(async)]`** (chip 6). Spec 10.3 gives
+    plain signatures. A plain synchronous command runs on the main thread, so reading or
+    writing a large file would freeze the window. The attribute runs the same function on
+    Tauri's thread pool. The signatures are unchanged.
+
+16. **Small choices the chip left open** (chip 6):
+    - The pure Rust helpers live in `paths.rs` (`normalise`, `parse_pdf_args`,
+      `has_pdf_extension`) and `files.rs` (`read_pdf_bytes`, `write_atomic`,
+      `write_error`). The commands in `lib.rs` are thin wrappers.
+    - `write_atomic` refuses a non-PDF path with `Err("not-pdf")`, the same string as
+      `read_pdf`.
+    - `read_pdf` maps only a missing file to `not-found`. Every other read failure is
+      `io: <detail>`, as spec 10.3 says. The "locked" rule applies to writes.
+    - The backup name uses the file stem as it is: `Form.PDF` backs up to
+      `Form.backup.pdf`.
+    - An extra cargo test holds the target open with share mode 0, as a program that
+      locks the file would. `write_atomic` returns `locked` and the file is unchanged.
+    - Launch arguments are read with `std::env::args_os`, converted lossily.
+      `std::env::args` panics on an argument that is not valid Unicode.
+    - `toFileError` passes a `FileError` through, and maps a non-string rejection (for
+      example an IPC `Error`) to `io` with its message. The user-facing texts are "The
+      file was not found.", "This is not a PDF file." and "Another program has this file
+      open." An `io: ` prefix is stripped from the detail.
+    - If the close handler throws, the adapter keeps the window open and logs the error.
+      Losing the user's work is worse than a window that needs a second try.
+    - The store loads with `autoSave: false`, because `saveState` saves itself. A failed
+      load is not cached, so the next call tries again.
+    - `pickSaveTarget` passes the PDF filter to the Save dialog too. If `normalise_paths`
+      drops the chosen path, it returns the path as chosen.
+    - The `open-files` listener ignores an empty list, though Rust never sends one.
 
 ## Questions for the user
 
