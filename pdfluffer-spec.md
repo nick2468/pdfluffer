@@ -393,9 +393,19 @@ export class SessionManager {
   revert(tabId: string): Promise<void>;           // phase 2
   locate(tabId: string): Promise<void>;           // for a 'not-found' tab
   confirmCloseAll(): Promise<boolean>;
-  attachContainer(tabId: string, el: HTMLElement | null): void;
+  setViewerHost(el: HTMLElement | null): void;
+  handleShortcut(name: ShortcutName): Promise<void>;   // section 11.6
+  dismissXfaBanner(tabId: string): void;
+  getSettings(): SettingsV1;
+  updateSettings(patch: Partial<Omit<SettingsV1, 'version'>>): void;
+  getRecent(): HistoryStateV1['items'];                // first 15
+  clearHistory(): void;
 }
 ```
+
+`setViewerHost` replaced a per-tab `attachContainer` on 2026-09-19. Every viewer mounts its
+iframe into the **one** shared host element (section 9.1 stacks them there anyway). If a tab
+is activated while the host is null, its load waits until the host is set.
 
 `Dialogs` is an interface with one method, so tests can fake it:
 
