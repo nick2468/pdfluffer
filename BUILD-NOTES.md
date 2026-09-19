@@ -116,6 +116,24 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
 3. **Deviation 7 is ratified.** Spec 9.4 was updated on 2026-09-19 to name the constructed
    stylesheet.
 
+4. **The browser adapter keeps a written file across a page reload (chip 3, part 5).
+   Builder checked** on 2026-09-19 in the built-in browser pane, against the Vite server
+   already running from this repo on port 1420 (its command line was this repo's
+   `node_modules/vite/bin/vite.js`, and the page showed the new Write back button).
+   The pane cannot drive a native file dialog, so a page script stood in for it: it patched
+   `HTMLInputElement.prototype.click` so the adapter's hidden input received
+   `samples/form-basic.pdf` (7,948 bytes, fetched from Vite) and fired `change`. Everything
+   after that is the adapter's own code. Steps and results:
+   1. **Open** ran `pickFiles()` then `readFile()`. One page loaded. `spike-ref` held
+      `mem:<uuid>` in localStorage under `pdfluffer.state.spike-ref`.
+   2. Typed "Harness Writer" into Full name with real key presses. Dirty turned true.
+   3. **Export** gave mode `append`, 8,699 bytes, and dirty false.
+   4. **Write back** reported "wrote 8699 bytes to (browser harness) form-basic.pdf".
+   5. Reloaded the page. The spike read `spike-ref`, called `readFile`, and loaded the file.
+      PDF.js held 8,699 bytes, Full name showed "Harness Writer", and dirty was false.
+   Console on the fresh loads: no errors, only the known WebGPU warning. The five hidden ids
+   still compute to `display: none`.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -150,6 +168,23 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    is otherwise copied as written. `exportBytes` also runs one dirty poll after a
    successful export, so `dirtychange` fires at once rather than on the next tick.
 
+9. **A tiny ambient type for `node:fs`** (chip 3). The project has no `@types/node`, and spec 5
+   allows no new dependency, so `tsc` rejected `import { readFileSync } from "node:fs"` in
+   the `hasDigitalSignature` test. `src/testing/node-fs.d.ts` declares that one function,
+   returning `Uint8Array` (Node's `Buffer` is a subclass). Typing only. App code must not
+   import `node:fs`.
+10. **Small choices the chip left open** (chip 3):
+   - `FakeFileAdapter.nameOf` and `writeFile` fall back to the last path segment of the ref
+     for a file the fake does not hold, so Save As onto a new ref has a name.
+     `pickFiles` and `pickSaveTarget` return `[]` and `null` when nothing is queued.
+   - A parser rejects the whole stored value, and uses the default, when any one tab or
+     history item is wrongly shaped. It returns a clean copy with only the schema's fields.
+     A `view` must be `null` or have a numeric `page` and `rotation` and a string `scale`.
+   - `BrowserFileAdapter.loadState` returns null and warns once when stored text is not
+     valid JSON. `writeFile` on a ref it does not hold throws `not-found`.
+   - `createDebouncedSaver` takes `Pick<FileAdapter, "saveState">`, so any full adapter fits.
+     A failed write from the timer is logged with `console.warn`. A failed `flush` rejects.
+
 ## Questions for the user
 
 For the orchestrator.
@@ -161,3 +196,9 @@ None open.
 1. **Chromium logs `No available adapters.`** when PDF.js probes for WebGPU
    (`pdf.mjs:9874`) on a machine or browser with no GPU adapter. It is a warning only.
    PDF.js carries on without WebGPU.
+
+2. **The browser harness cannot keep its tab open on close.** A browser does not wait for
+   a promise in `beforeunload`, so `BrowserFileAdapter.onCloseRequested` starts the handler
+   and lets the tab close whatever it resolves. localStorage writes inside the handler are
+   synchronous, so state saves before the first `await` still land. The Tauri adapter
+   (chip 6) is not affected.

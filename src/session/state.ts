@@ -68,7 +68,7 @@ function parseHistoryItem(v: unknown): HistoryItem | undefined {
   return { ref: v.ref, name: v.name, lastOpened: v.lastOpened, view };
 }
 
-/** Parses every element, or returns undefined if any element is wrongly shaped. */
+/** Parses every element, or returns undefined if one element is wrongly shaped. */
 function parseList<T>(v: unknown, parseOne: (e: unknown) => T | undefined): T[] | undefined {
   if (!Array.isArray(v)) return undefined;
   const out: T[] = [];
