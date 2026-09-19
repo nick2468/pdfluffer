@@ -1,0 +1,77 @@
+// Every dialog the session manager shows, with the wording of spec 12.3, 12.4, 12.5 and 12.8.
+// Tests and the UI share these, so a wording change happens in one place.
+
+export interface DialogButton { id: string; label: string; kind?: "primary" | "danger"; }
+
+export interface Dialogs {
+  ask(title: string, body: string, buttons: DialogButton[]): Promise<string>; // returns id
+}
+
+export interface DialogText { title: string; body: string; buttons: DialogButton[]; }
+
+export const BUTTON = {
+  overwrite: { id: "overwrite", label: "Overwrite", kind: "primary" },
+  saveAs: { id: "saveAs", label: "Save As..." },
+  cancel: { id: "cancel", label: "Cancel" },
+  save: { id: "save", label: "Save", kind: "primary" },
+  discard: { id: "discard", label: "Discard", kind: "danger" },
+  continue: { id: "continue", label: "Continue anyway", kind: "danger" },
+  saveCopy: { id: "saveCopy", label: "Save As a copy..." },
+  open: { id: "open", label: "Open", kind: "primary" },
+  ok: { id: "ok", label: "OK", kind: "primary" },
+} as const satisfies Record<string, DialogButton>;
+
+/** Spec 12.3, the first save of a tab. */
+export function firstSaveDialog(name: string): DialogText {
+  return {
+    title: `Save changes to ${name}?`,
+    body: "Overwrite replaces the original file. PDFluffer will not ask again for this file while its tab stays open.",
+    buttons: [BUTTON.overwrite, BUTTON.saveAs, BUTTON.cancel],
+  };
+}
+
+/** Spec 12.4, before a rewrite of a signed file reaches disk. */
+export const SIGNATURE_GUARD_DIALOG: DialogText = {
+  title: "This PDF is digitally signed",
+  body: "This change rewrites the file. The digital signature will stop verifying.",
+  buttons: [BUTTON.saveCopy, BUTTON.continue, BUTTON.cancel],
+};
+
+/** Spec 12.5, closing a dirty tab. The spec gives no body. */
+export function closeDirtyDialog(name: string): DialogText {
+  return {
+    title: `Save changes to ${name}?`,
+    body: "",
+    buttons: [BUTTON.save, BUTTON.discard, BUTTON.cancel],
+  };
+}
+
+export const SAVE_FAILED_TITLE = "Could not save";
+
+/** Spec 12.3 step 4, the file is locked by another program. */
+export const LOCKED_DIALOG: DialogText = {
+  title: SAVE_FAILED_TITLE,
+  body: "Another program has this file open. Close it there, or use Save As.",
+  buttons: [BUTTON.ok],
+};
+
+/** A failed export or write. The body is the error message. */
+export function saveFailedDialog(message: string): DialogText {
+  return { title: SAVE_FAILED_TITLE, body: message, buttons: [BUTTON.ok] };
+}
+
+/** Spec 12.3, Save As onto a file that is open in another tab. */
+export const OPEN_ELSEWHERE_DIALOG: DialogText = {
+  title: "File is open elsewhere",
+  body: "That file is open in another tab.",
+  buttons: [BUTTON.ok],
+};
+
+/** Spec 12.8, the body is the full URL. */
+export function externalLinkDialog(url: string): DialogText {
+  return {
+    title: "Open this link in your browser?",
+    body: url,
+    buttons: [BUTTON.open, BUTTON.cancel],
+  };
+}
