@@ -518,26 +518,42 @@ const capture = {
 app.downloadManager = capture;
 ```
 
-`hasChanges()` returns true when any of the three signals in F8 is true.
+`hasChanges()` is defined from three signals (F8). Revised 2026-09-19 after chip 1's fact
+check, which showed `downloadOrSave()` calls `download()` legitimately when the annotation
+storage is empty:
 
-`exportBytes()` must guard against the hazard in F7:
+```ts
+hasChanges(): boolean {
+  const annotations = app._annotationStorageModified === true
+                   && app.pdfDocument?.annotationStorage.size > 0;   // add-then-delete is not a change
+  const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
+  const merged = app._mergedDocumentNeedsSaving === true;
+  return annotations || structural || merged;
+}
+```
+
+`exportBytes()` must guard against the hazard in F7. `download()` counts as a failure
+**only in the branch where `downloadOrSave()` would call `save()`**, because only there is
+`download()` a fallback:
 
 ```ts
 async exportBytes(): Promise<ExportResult> {
   if (!this.hasChanges()) return { mode: 'none' };
-  const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true
-                  || app._mergedDocumentNeedsSaving === true;
+  const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
+  const merged = app._mergedDocumentNeedsSaving === true;
+  const viaSave = !structural && app.pdfDocument.annotationStorage.size > 0;
   let captured: Uint8Array | null = null;
   let fellBack = false;
   const originalDownload = app.download;
   capture.onData = b => { captured = b; };
-  app.download = async () => { fellBack = true; };   // F7: a fallback means the save failed
+  if (viaSave) app.download = async () => { fellBack = true; };  // F7: here a download IS the failure fallback
   try { await app.downloadOrSave(); }
   finally { app.download = originalDownload; capture.onData = null; }
   if (fellBack || !captured || captured.length === 0) {
+    // also covers save() returning early on _saveInProgress, and extractPages giving nothing
     throw new Error('The viewer could not write your changes. Nothing was saved.');
   }
-  return { mode: structural ? 'rewrite' : 'append', bytes: captured };
+  return { mode: structural || merged ? 'rewrite' : 'append', bytes: captured };
 }
 ```
 
