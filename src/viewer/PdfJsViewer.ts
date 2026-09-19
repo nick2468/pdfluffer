@@ -1,6 +1,14 @@
 // The PDF.js bridge (spec 9). This is the only file that may name PDFViewerApplication or
 // reach into the viewer iframe (D7). PDF.js itself is vendored unchanged in public/pdfjs.
 
+import {
+  fieldMapFrom,
+  hasEffectiveChange,
+  isUntouchedAnnotation,
+  UNTOUCHED_ANNOTATION,
+  type EditorFacts,
+  type FieldInfo,
+} from './effectiveChange';
 import { isReloadKey, shortcutFor } from './shortcutFor';
 import type { DocInfo, ExportResult, Viewer, ViewerEvents, ViewState } from './Viewer';
 import injectCss from './viewerInject.css?raw';
@@ -14,15 +22,36 @@ interface PdfJsEventBus {
 
 interface PdfJsBusEvent { message?: string; }
 
+interface PdfJsAnnotationStorage extends Iterable<[string, unknown]> {
+  size: number;
+}
+
 interface PdfJsDocument {
-  annotationStorage: { size: number };
+  annotationStorage: PdfJsAnnotationStorage;
   isPureXfa: boolean;
+  getFieldObjects(): Promise<unknown>;
+  getMetadata(): Promise<{ info?: { IsXFAPresent?: unknown } }>;
+}
+
+/** Duck typed. An editor is a class instance from the iframe's realm. */
+interface PdfJsEditor {
+  annotationElementId?: unknown;
+  deleted?: unknown;
+  isInEditMode?: () => unknown;
+  serialize(): unknown;
+}
+
+interface PdfJsEditorUIManager {
+  getActive(): unknown;
+  getMode(): number;
 }
 
 interface PdfJsPageViewer {
   currentPageNumber: number;
   currentScaleValue: string;
   pagesRotation: number;
+  annotationEditorMode: number;
+  _layerProperties?: { annotationEditorUIManager?: PdfJsEditorUIManager | null };
 }
 
 interface PdfJsDownloadManager {
@@ -79,6 +108,8 @@ const OPTIONS: [string, string | number | boolean][] = [
 ];
 
 const VIEWER_URL = '/pdfjs/web/viewer.html';
+/** AnnotationEditorType.INK. The only mode with a drawing session (pdf.mjs `isDrawer`). */
+const INK_MODE = 15;
 const DIRTY_POLL_MS = 1000;
 
 function applyOptions(options: PdfJsAppOptions): void {
@@ -125,6 +156,8 @@ export class PdfJsViewer implements Viewer {
   private destroyed = false;
   private visible = true;
   private dirty = false;
+  /** What the loaded file holds for each form widget. Null when unknown or out of date. */
+  private baseline: Map<string, FieldInfo> | null = null;
   private pollTimer: number | null = null;
   private busListeners: [string, (event: PdfJsBusEvent) => void][] = [];
   private win: PdfJsWindow | null = null;
@@ -209,6 +242,7 @@ export class PdfJsViewer implements Viewer {
       bus.on('documenterror', onError);
     });
 
+    this.baseline = null;
     try {
       const opened = app.open({ data: bytes.slice(), filename });   // .slice() is required (F4)
       // PDF.js dispatches documenterror before open() rejects, so the first rejection wins.
@@ -218,6 +252,9 @@ export class PdfJsViewer implements Viewer {
       if (onError) bus.off('documenterror', onError);
     }
 
+    const doc = app.pdfDocument;
+    const baseline = await this.readBaseline(doc);
+    if (this.app === app && app.pdfDocument === doc) this.baseline = baseline;
     this.pollDirty();
     return { pageCount: app.pagesCount, isXfa: app.pdfDocument?.isPureXfa === true };
   }
@@ -225,9 +262,8 @@ export class PdfJsViewer implements Viewer {
   hasChanges(): boolean {
     const app = this.app;
     if (!app) return false;
-    // Spec 9.5, revised 2026-09-19. The `?? 0` only satisfies strict null checks.
-    const annotations = app._annotationStorageModified === true
-                     && (app.pdfDocument?.annotationStorage.size ?? 0) > 0;   // add-then-delete is not a change
+    // Spec 9.5, revised 2026-09-19, and chip 7 for the annotation half.
+    const annotations = this.annotationsChanged(app);
     const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
     const merged = app._mergedDocumentNeedsSaving === true;
     return annotations || structural || merged;
@@ -240,6 +276,9 @@ export class PdfJsViewer implements Viewer {
     const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
     const merged = app._mergedDocumentNeedsSaving === true;
     const viaSave = !structural && (app.pdfDocument?.annotationStorage.size ?? 0) > 0;
+    // The file on disk is about to differ from the one PDF.js loaded, and an append save does
+    // not reload the viewer. From here until the next load, every stored entry counts.
+    this.baseline = null;
     // Declared with `as` so TypeScript does not narrow them to their first values.
     let captured = null as Uint8Array | null;
     let fellBack = false as boolean;
@@ -399,6 +438,44 @@ export class PdfJsViewer implements Viewer {
     doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
   }
 
+  /**
+   * Chip 7. True when a save would write an annotation change. The modified flag stays the
+   * first gate: an append save clears it. Then the rule in effectiveChange.ts drops entries
+   * proven to match the loaded file. Where that proof is not available, every entry counts,
+   * which is the rule before chip 7.
+   */
+  private annotationsChanged(app: PdfJsApp): boolean {
+    if (app._annotationStorageModified !== true) return false;
+    const storage = app.pdfDocument?.annotationStorage;
+    if (!storage || storage.size === 0) return false;   // add-then-delete is not a change
+    if (!this.baseline || this.mayHoldUncommittedEdit(app)) return true;
+    return hasEffectiveChange(storageEntries(storage), this.baseline);
+  }
+
+  /**
+   * Before it saves, PDF.js commits the active editor and ends an ink drawing session
+   * (`downloadOrSave` calls `endCurrentEditing`). Until then that work is not in the storage,
+   * so while either may exist the no-op rule is not applied. Leaving ink mode ends the session.
+   */
+  private mayHoldUncommittedEdit(app: PdfJsApp): boolean {
+    const ui = app.pdfViewer._layerProperties?.annotationEditorUIManager;
+    if (!ui) return true;
+    return ui.getActive() != null || ui.getMode() === INK_MODE || app.pdfViewer.annotationEditorMode === INK_MODE;
+  }
+
+  /** The loaded file's form values, or null if they cannot be read. */
+  private async readBaseline(doc: PdfJsDocument | null): Promise<Map<string, FieldInfo> | null> {
+    if (!doc) return null;
+    try {
+      const [fieldObjects, metadata] = await Promise.all([doc.getFieldObjects(), doc.getMetadata()]);
+      const hasXfa = doc.isPureXfa || metadata.info?.IsXFAPresent !== false;
+      return fieldMapFrom(fieldObjects, { hasXfa });
+    } catch (err) {
+      console.warn('Could not read the form fields. Every form entry will count as a change.', err);
+      return null;
+    }
+  }
+
   private pollDirty(): void {
     const dirty = this.hasChanges();
     if (dirty !== this.dirty) {
@@ -412,5 +489,29 @@ export class PdfJsViewer implements Viewer {
       window.clearInterval(this.pollTimer);
       this.pollTimer = null;
     }
+  }
+}
+
+function isEditor(value: unknown): value is PdfJsEditor {
+  return typeof value === 'object' && value !== null
+      && typeof (value as { serialize?: unknown }).serialize === 'function';
+}
+
+function editorFacts(editor: PdfJsEditor): EditorFacts {
+  const inFile = typeof editor.annotationElementId === 'string';
+  return {
+    annotationElementId: editor.annotationElementId,
+    deleted: editor.deleted,
+    inEditMode: typeof editor.isInEditMode === 'function' ? editor.isInEditMode() : undefined,
+    // A new editor can never count as untouched, so skip its serialisation.
+    serialized: inFile ? editor.serialize() : undefined,
+  };
+}
+
+/** The storage entries, with each untouched annotation editor replaced by the marker. Lazy,
+ * so the rule stops reading at the first change. */
+function* storageEntries(storage: PdfJsAnnotationStorage): Generator<[string, unknown]> {
+  for (const [id, value] of storage) {
+    yield [id, isEditor(value) && isUntouchedAnnotation(editorFacts(value)) ? UNTOUCHED_ANNOTATION : value];
   }
 }
