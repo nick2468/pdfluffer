@@ -70,7 +70,48 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
 
 ## Decisions taken under a named rule
 
-None yet.
+1. **Chip 1's question on spec 9.5 `exportBytes` is answered.** Spec 9.5 was revised on
+   2026-09-19. `hasChanges` now ignores an empty annotation storage, and `download()` counts
+   as a failure only on the `save()` branch. `PdfJsViewer.ts` copies the revised code.
+2. **Fallback B not needed (spec 9.5, plan P0.11).** Builder checked on 2026-09-19 in the
+   built-in browser pane against `npm run dev`, with `samples/form-basic.pdf` loaded
+   through the spike's file input. The six findings:
+   1. **Dirty turns true within a second. Builder checked.** After typing into "Full name"
+      with real key presses, dirty showed true within 1.5 s, while the field still had
+      focus. Timed three more edits of "Email" by setting the value and dispatching `input`:
+      dirty turned true after 306, 778 and 785 ms. That fits the 1000 ms poll.
+   2. **Dirty returns to false after Export, without a reload. Builder checked.** Four
+      exports, all mode `append`, dirty false straight after each. Fallback B is not needed.
+      The first export was 8,693 bytes. Its first 7,948 bytes equal the original file, and
+      the tail holds "Test Person" and ends in `%%EOF`, so it is a true incremental update.
+      Underneath, `_annotationStorageModified` is cleared by the save while the annotation
+      storage keeps its entry (size stays 1). The next edit sets the flag again and dirty
+      returns to true.
+   3. **Reload from export keeps the values, and dirty is false. Builder checked.** After
+      Reload from export, PDF.js holds a new document object whose `getData()` length is
+      8,693, "Full name" shows "Test Person", and dirty is false. The zoom, set to 1.5
+      before the reload, came back as 1.5. Page and rotation restore were not exercised
+      (the sample has one page, and no rotation was set).
+   4. **Add then delete an annotation: dirty returns to false. Builder checked.** With the
+      Text tool, added "Note here" on the page. Dirty turned true. Deleted it with its bin
+      button ("Text removed" toast). Dirty turned false. At that point
+      `_annotationStorageModified` was already cleared by PDF.js itself and the storage size
+      was 0. PDF.js's own `_hasChanges()` also said false. Export then returned mode `none`.
+   5. **Toolbar. Builder checked.** The signature tool ("Add signature",
+      `editorSignatureButton`) is visible in the main toolbar, beside highlight, text, draw
+      and image. Open (`secondaryOpenFile`) and both Save buttons (`downloadButton`,
+      `secondaryDownload`) are hidden, as are `viewBookmark` and `viewBookmarkSeparator`.
+      Print (`printButton`) stays in the main toolbar. The overflow menu's own Print
+      (`secondaryPrint`) is hidden by PDF.js's CSS at this width, not by ours. All twelve
+      spec 9.2 options read back as set, and `enableMerge` stays false.
+   6. **Console. Builder checked.** After the stylesheet fix (deviation 7), no errors. One
+      warning, `No available adapters.`, printed by Chromium when PDF.js probes for WebGPU
+      (`pdf.mjs:9874`) in a browser with no GPU adapter. Harmless. Also info and log lines:
+      Vite's connect lines, React's DevTools hint, the PDF.js version line on each load, and
+      one "Spike mount ended: This viewer was destroyed while it was mounting." from React
+      StrictMode's mount-unmount-mount in development, which the spike logs on purpose.
+      Before the fix there was one error: the CSP block on the `<style>` element. Every
+      request went to `http://localhost:1420`.
 
 ## Deviations
 
@@ -88,25 +129,37 @@ None yet.
    natively, so no runner is needed and the `.mjs` fallback was not used.
 6. **`tauri-plugin-fs` appears in `Cargo.lock`.** `tauri-plugin-dialog` depends on it. The
    `fs` plugin is not registered and has no permissions, as spec 10.5 requires.
+7. **The injected stylesheet is a constructed stylesheet, not a `<style>` element**
+   (spec 9.4, chip 2). The vendored `public/pdfjs/web/viewer.html:30-33` carries its own
+   CSP meta tag with `style-src 'self'`. Chromium blocked the `<style>` element and logged
+   "Applying inline style violates the following Content Security Policy directive
+   'style-src 'self''". The buttons stayed visible. `PdfJsViewer.injectStyle` now builds a
+   `CSSStyleSheet` with the iframe window's own constructor, calls `replaceSync` with the
+   same imported CSS string, and appends it to `document.adoptedStyleSheets`. A constructed
+   stylesheet is not inline, so the CSP allows it. Checked in the browser pane: no CSP
+   error, and all five ids compute to `display: none`. The design is unchanged: the same
+   file, imported with `?raw`, applied from outside, hiding only. See question 1.
+8. **Two typing-only changes to the spec 9.5 code blocks.** Strict TypeScript rejects
+   `app.pdfDocument?.annotationStorage.size > 0` (possibly undefined), so both places read
+   `(app.pdfDocument?.annotationStorage.size ?? 0) > 0`. That gives the same result.
+   In `exportBytes`, `captured` and `fellBack` are declared with `as` so TypeScript does
+   not narrow them to their first values, which are only changed inside callbacks. The logic
+   is otherwise copied as written. `exportBytes` also runs one dirty poll after a
+   successful export, so `dirtychange` fires at once rather than on the next tick.
 
 ## Questions for the user
 
-For the orchestrator. Nothing below blocks chip 1.
+For the orchestrator. Nothing below blocks chip 2.
 
-1. **Spec 9.5 `exportBytes` may throw on two legitimate saves (from F6).** The spec treats
-   any call to `app.download()` during `downloadOrSave()` as the F7 failure fallback. But
-   `downloadOrSave()` also calls `download()` directly, not as a fallback, whenever there
-   are no structural changes and `annotationStorage.size` is 0 (`viewer.mjs:19665`). Two
-   cases reach that with `hasChanges()` true:
-   - `_mergedDocumentNeedsSaving` is true (a merged or reloaded document) with no
-     annotations. The good bytes come from `getData()`, but `fellBack` is set, so export
-     throws.
-   - `_annotationStorageModified` is true but storage size is back to 0, for example after
-     the user adds and then deletes an annotation.
-   Not designed around, per the chip. The spike (P0.10, P0.11) is the natural place to
-   confirm it. A possible direction for the orchestrator: count `download()` as a fallback
-   only when it runs from inside `save()`.
+1. **Please ratify deviation 7, the constructed stylesheet.** Spec 9.4 says to add a
+   `<style>` element, and the vendored viewer's own CSP blocks that. The fix keeps the
+   design, but it changes the mechanism the spec names, so the spec text may want updating.
+   The same CSP also applies inside the Tauri window, whatever `tauri.conf.json` allows,
+   because a page's meta CSP and the host's CSP are both enforced. P0.13 will show whether
+   the Tauri window adds anything.
 
 ## Known issues
 
-None yet.
+1. **Chromium logs `No available adapters.`** when PDF.js probes for WebGPU
+   (`pdf.mjs:9874`) on a machine or browser with no GPU adapter. It is a warning only.
+   PDF.js carries on without WebGPU.
