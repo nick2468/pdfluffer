@@ -497,8 +497,14 @@ extra. Never store a password.
 
 ### 9.4 Styling from outside
 
-`src/viewer/viewerInject.css` is imported as a string (`?inline` or `?raw`) and added to the
-iframe's `<head>` in a `<style>` element. It may only hide elements. Hide PDF.js's own
+`src/viewer/viewerInject.css` is imported as a string (`?raw`) and applied as a
+**constructed stylesheet**: build a `CSSStyleSheet` with the iframe window's own
+constructor, call `replaceSync(css)`, and append it to the iframe document's
+`adoptedStyleSheets`. Do **not** use a `<style>` element. The vendored `viewer.html` carries
+its own CSP meta tag with `style-src 'self'`, which blocks inline styles. A constructed
+stylesheet is not inline, so it is allowed (found and proven in chip 2, ratified
+2026-09-19). That meta CSP applies inside the Tauri window too, on top of `tauri.conf.json`.
+The stylesheet may only hide elements. Hide PDF.js's own
 **Open file** and **Download/Save** buttons, in both the main toolbar and the secondary
 (overflow) menu, and the **current view / bookmark** link if present. Find the real element
 ids in `public/pdfjs/web/viewer.html`. Expected ids, to be confirmed: `secondaryOpenFile`,
