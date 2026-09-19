@@ -134,6 +134,11 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    Console on the fresh loads: no errors, only the known WebGPU warning. The five hidden ids
    still compute to `display: none`.
 
+5. **The save and close flows live in `src/session/saveFlow.ts` and `closeFlow.ts`** (chip 4's
+   500-line rule). `SessionManager.ts` reached 580 lines with them inside. They are now plain
+   functions over the tab and a small context object the manager passes in, and the manager
+   is 478 lines.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -184,6 +189,37 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
      valid JSON. `writeFile` on a ref it does not hold throws `not-found`.
    - `createDebouncedSaver` takes `Pick<FileAdapter, "saveState">`, so any full adapter fits.
      A failed write from the timer is logged with `console.warn`. A failed `flush` rejects.
+11. **A tab stays dirty until its exported bytes reach disk** (chip 4, "loses no user
+    data"). PDF.js clears its own dirty flag when `exportBytes` succeeds. If the user then
+    cancels the first-save dialog, or the write fails, the viewer reports clean although
+    the file on disk is old. The tab could then close with no prompt and lose the edit. So a
+    successful export sets a private `unsavedMode` on the `DocumentSession`. `dirty` counts
+    it. A later save uses those bytes and that mode even when the new export says `none`.
+    A successful write clears it. For the same reason, the `dirty` passed to `decideSave`
+    is read **before** the export.
+12. **Small choices the chip left open** (chip 4):
+    - Save As never shows the signature guard. The guard's own "Save As a copy..." leads to
+      Save As, so a copy is the safe path. Save As onto the tab's own file is allowed.
+    - After a successful write, `hasDigitalSignature` is worked out again from the written
+      bytes, so the Signed chip matches the file on disk.
+    - After a `rewrite` save, if the viewer fails to reload, the tab shows the error panel.
+      The file is already saved.
+    - `save` on a clean tab returns true and writes nothing. `save` and `saveAs` on a tab
+      that is not `ready` return false.
+    - In `confirmCloseAll`, a Save that fails keeps the window open, like Cancel. A failed
+      state flush is logged, and the window still closes.
+    - Locate works only on a `not-found` tab. It resets `saveConfirmed`, because the tab now
+      points at a different file. Locate onto a file open in another tab shows the "File is
+      open elsewhere" dialog and changes nothing.
+    - The close dialog (spec 12.5) has an empty body, because the spec gives none.
+    - `start()` skips a saved tab whose file is already open. If an open request arrives
+      while `start()` waits for pending files, its tab stays active.
+    - `start()` does not register `onCloseRequested`. Spec 12.6 does not list it. Chip 5
+      wires `files.onCloseRequested(() => manager.confirmCloseAll())`.
+    - The window title is set only when it changes.
+    - `Dialogs` and `DialogButton` live in `dialogTexts.ts` and are re-exported from
+      `SessionManager.ts`. The spec 8.4 "private" fields are public to TypeScript so the
+      manager and the flow functions can reach them. No snapshot carries them.
 
 ## Questions for the user
 
@@ -202,3 +238,9 @@ None open.
    and lets the tab close whatever it resolves. localStorage writes inside the handler are
    synchronous, so state saves before the first `await` still land. The Tauri adapter
    (chip 6) is not affected.
+
+3. **Settings and the Recent list are not in the snapshot** (spec 8.5 fixes its shape). So
+   `clearHistory` and `updateSettings` change nothing that `useSyncExternalStore` sees.
+   Chip 5 must read `getRecent()` and `getSettings()` when a menu or dialog opens, and the
+   empty state must re-render itself after Clear history. The confirm step for Clear
+   history (spec 11.5) also belongs to chip 5. `clearHistory()` clears at once.
