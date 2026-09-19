@@ -25,7 +25,7 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P1.1 `FileAdapter.ts`, `fakeFileAdapter.ts`, `browserFileAdapter.ts`, `createFileAdapter()` (spec 8.1, 8.2)
 - [x] P1.2 `hasDigitalSignature` with tests (spec 12.4, 15.1)
 - [x] P1.3 State schemas with load, default and debounce rules, with tests (spec 8.6, 15.3)
-- [ ] P1.4 `decideSave` with its truth-table tests (spec 12.3, 15.2)
+- [x] P1.4 `decideSave` with its truth-table tests (spec 12.3, 15.2)
 - [ ] P1.5 `DocumentSession` and `SessionManager`: open, activate, lazy load, history (spec 8.4, 8.5, 12.1, 12.2)
 - [ ] P1.6 Save and Save As flows, with tests (spec 12.3, 15.5)
 - [ ] P1.7 Close tab and close window flows, with tests (spec 12.5, 15.6)
