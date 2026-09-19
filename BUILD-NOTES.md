@@ -113,6 +113,9 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
       Before the fix there was one error: the CSP block on the `<style>` element. Every
       request went to `http://localhost:1420`.
 
+3. **Deviation 7 is ratified.** Spec 9.4 was updated on 2026-09-19 to name the constructed
+   stylesheet.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -138,7 +141,7 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    same imported CSS string, and appends it to `document.adoptedStyleSheets`. A constructed
    stylesheet is not inline, so the CSP allows it. Checked in the browser pane: no CSP
    error, and all five ids compute to `display: none`. The design is unchanged: the same
-   file, imported with `?raw`, applied from outside, hiding only. See question 1.
+   file, imported with `?raw`, applied from outside, hiding only. Ratified, see decision 3.
 8. **Two typing-only changes to the spec 9.5 code blocks.** Strict TypeScript rejects
    `app.pdfDocument?.annotationStorage.size > 0` (possibly undefined), so both places read
    `(app.pdfDocument?.annotationStorage.size ?? 0) > 0`. That gives the same result.
@@ -149,14 +152,9 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
 
 ## Questions for the user
 
-For the orchestrator. Nothing below blocks chip 2.
+For the orchestrator.
 
-1. **Please ratify deviation 7, the constructed stylesheet.** Spec 9.4 says to add a
-   `<style>` element, and the vendored viewer's own CSP blocks that. The fix keeps the
-   design, but it changes the mechanism the spec names, so the spec text may want updating.
-   The same CSP also applies inside the Tauri window, whatever `tauri.conf.json` allows,
-   because a page's meta CSP and the host's CSP are both enforced. P0.13 will show whether
-   the Tauri window adds anything.
+None open.
 
 ## Known issues
 
