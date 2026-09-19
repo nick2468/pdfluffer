@@ -30,7 +30,7 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P1.6 Save and Save As flows, with tests (spec 12.3, 15.5)
 - [x] P1.7 Close tab and close window flows, with tests (spec 12.5, 15.6)
 - [x] P1.8 Start and session restore, not-found and Locate, with tests (spec 12.6, 15.4)
-- [ ] P1.9 Finish `PdfJsViewer.ts`: view state, injected CSS, event forwarders, print, focus (spec 9.3, 9.4, 9.6)
+- [x] P1.9 Finish `PdfJsViewer.ts`: view state, injected CSS, event forwarders, print, focus (spec 9.3, 9.4, 9.6)
 - [ ] P1.10 App frame: layout, tab bar, panels, `ChoiceDialog`, `useSession()` (spec 11.1, 11.2, 11.4, 11.5)
 - [ ] P1.11 App menu, Recent list, Settings, Clear history, About (spec 11.3, 11.5)
 - [ ] P1.12 Keyboard shortcuts from both the parent window and the iframe. Window title (spec 11.6, 11.7)

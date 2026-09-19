@@ -1,6 +1,7 @@
 // The PDF.js bridge (spec 9). This is the only file that may name PDFViewerApplication or
 // reach into the viewer iframe (D7). PDF.js itself is vendored unchanged in public/pdfjs.
 
+import { isReloadKey, shortcutFor } from './shortcutFor';
 import type { DocInfo, ExportResult, Viewer, ViewerEvents, ViewState } from './Viewer';
 import injectCss from './viewerInject.css?raw';
 
@@ -57,6 +58,8 @@ interface PdfJsAppOptions {
 interface PdfJsWindow {
   PDFViewerApplication: PdfJsApp;
   PDFViewerApplicationOptions: PdfJsAppOptions;
+  addEventListener(type: string, listener: (event: Event) => void, options: { capture: boolean }): void;
+  removeEventListener(type: string, listener: (event: Event) => void, options: { capture: boolean }): void;
 }
 
 // Spec 9.2. Do not add an option that is not in that table.
@@ -124,6 +127,8 @@ export class PdfJsViewer implements Viewer {
   private dirty = false;
   private pollTimer: number | null = null;
   private busListeners: [string, (event: PdfJsBusEvent) => void][] = [];
+  private win: PdfJsWindow | null = null;
+  private winListeners: [string, (event: Event) => void][] = [];
   private listeners: ListenerMap = {
     viewchange: new Set(),
     dirtychange: new Set(),
@@ -181,6 +186,7 @@ export class PdfJsViewer implements Viewer {
 
     app.downloadManager = this.capture;
     this.injectStyle();
+    this.forwardEvents(win);
     this.listenOnBus('pagechanging', () => this.emit('viewchange', this.getViewState()));
     this.listenOnBus('scalechanging', () => this.emit('viewchange', this.getViewState()));
     this.listenOnBus('rotationchanging', () => this.emit('viewchange', this.getViewState()));
@@ -309,6 +315,9 @@ export class PdfJsViewer implements Viewer {
       this.capture.onData = null;
     }
     this.busListeners = [];
+    for (const [name, listener] of this.winListeners) this.win?.removeEventListener(name, listener, { capture: true });
+    this.winListeners = [];
+    this.win = null;
     for (const set of Object.values(this.listeners)) set.clear();
     this.iframe?.remove();
     this.iframe = null;
@@ -328,6 +337,45 @@ export class PdfJsViewer implements Viewer {
   private listenOnBus(name: string, listener: (event: PdfJsBusEvent) => void): void {
     this.requireApp().eventBus.on(name, listener);
     this.busListeners.push([name, listener]);
+  }
+
+  // Spec 9.6: capture-phase listeners on the iframe's window. The events come from the
+  // iframe's realm, so `instanceof` against this window's classes would fail. Duck typing only.
+  private forwardEvents(win: PdfJsWindow): void {
+    this.win = win;
+    const add = (name: string, listener: (event: Event) => void) => {
+      win.addEventListener(name, listener, { capture: true });
+      this.winListeners.push([name, listener]);
+    };
+    add('keydown', (event) => {
+      const e = event as KeyboardEvent;
+      const name = shortcutFor(e);
+      if (name) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.emit('shortcut', name);
+      } else if (import.meta.env.PROD && isReloadKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+    add('click', (event) => {
+      const target = event.target as { closest?: (selector: string) => { href?: string } | null } | null;
+      const href = target?.closest?.('a[href]')?.href;
+      if (typeof href === 'string' && /^(https?|mailto):/i.test(href)) {
+        event.preventDefault();
+        this.emit('externallink', href);
+      }
+    });
+    const blockFileDrop = (event: Event) => {
+      const types = (event as DragEvent).dataTransfer?.types;
+      if (types && Array.from(types).includes('Files')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    add('dragover', blockFileDrop);
+    add('drop', blockFileDrop);
   }
 
   // Spec 9.3: rotation, then scale, then page, clamped to the page count.
