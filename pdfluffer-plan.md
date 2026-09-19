@@ -7,9 +7,9 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 
 - [x] P0.1 Run the three version commands, with `.cargo\bin` put on the PATH first. Stop if `rustc` is not found there or Node is older than 24 (spec 4)
 - [x] P0.2 `git init -b main`. Add `.gitignore` (spec 6.3). First commit holds the existing `.md` files
-- [ ] P0.3 Create `BUILD-NOTES.md` with its headings. Record the environment (spec 18)
-- [ ] P0.4 Scaffold Tauri 2 + React + TypeScript. Remove the demo code. Vite on port 1420 (spec 10.1)
-- [ ] P0.5 Add the npm scripts `dev`, `build`, `check`, `samples`, `tauri`. Install Vitest
+- [x] P0.3 Create `BUILD-NOTES.md` with its headings. Record the environment (spec 18)
+- [x] P0.4 Scaffold Tauri 2 + React + TypeScript. Remove the demo code. Vite on port 1420 (spec 10.1)
+- [x] P0.5 Add the npm scripts `dev`, `build`, `check`, `samples`, `tauri`. Install Vitest
 - [ ] P0.6 Vendor PDF.js 6.3.289 into `public/pdfjs/` unchanged. Write `VENDOR-PDFJS.md` (spec 6.2)
 - [ ] P0.7 Write `scripts/make-samples.ts`. Generate the four sample PDFs (spec 14)
 - [ ] P0.8 Re-check facts F1 to F10 against the vendored files. Record each (spec 7)
