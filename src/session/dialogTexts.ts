@@ -75,3 +75,19 @@ export function externalLinkDialog(url: string): DialogText {
     buttons: [BUTTON.open, BUTTON.cancel],
   };
 }
+
+/** Spec 11.5, the app menu's Clear history item. */
+export const CLEAR_HISTORY_DIALOG: DialogText = {
+  title: "Clear history?",
+  body: "This empties the Recent list and forgets the page and zoom of every file. Open tabs stay open.",
+  buttons: [{ id: BUTTON.ok.id, label: "Clear history", kind: "danger" }, BUTTON.cancel],
+};
+
+/** Spec 11.5, About PDFluffer. The body keeps its line breaks. */
+export function aboutDialog(appVersion: string, pdfJsVersion: string): DialogText {
+  return {
+    title: "About PDFluffer",
+    body: `Version ${appVersion}\nPDF.js ${pdfJsVersion}\nNo ads. No account. No network.`,
+    buttons: [BUTTON.ok],
+  };
+}

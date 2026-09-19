@@ -375,6 +375,12 @@ export class SessionManager {
 
   // Small state
 
+  /** The app menu's Print item. PDF.js shows its own print routine. */
+  print(tabId: string): void {
+    const tab = this.find(tabId);
+    if (tab?.status === 'ready') tab.viewer?.print();
+  }
+
   dismissXfaBanner(tabId: string): void {
     const tab = this.find(tabId);
     if (!tab) return;

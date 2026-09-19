@@ -989,3 +989,19 @@ describe("SessionManager settings and the XFA banner", () => {
     expect(tab(0).xfaBannerDismissed).toBe(true);
   });
 });
+
+describe("SessionManager print", () => {
+  it("prints the tab's viewer only when the tab is ready", async () => {
+    const { manager, viewers, snap } = setup({ files: [[A]] });
+    await manager.start();
+    await manager.openRefs([A, B]);
+    const [a, b] = snap().tabs;
+    expect(b.status).toBe("not-found");
+    manager.print(b.id);
+    manager.print("no-such-tab");
+    expect(viewers).toHaveLength(0);
+    await manager.activate(a.id);
+    manager.print(a.id);
+    expect(viewers[0].printCount).toBe(1);
+  });
+});
