@@ -22,7 +22,7 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 
 ## Phase 1 - the Must list
 
-- [ ] P1.1 `FileAdapter.ts`, `fakeFileAdapter.ts`, `browserFileAdapter.ts`, `createFileAdapter()` (spec 8.1, 8.2)
+- [x] P1.1 `FileAdapter.ts`, `fakeFileAdapter.ts`, `browserFileAdapter.ts`, `createFileAdapter()` (spec 8.1, 8.2)
 - [ ] P1.2 `hasDigitalSignature` with tests (spec 12.4, 15.1)
 - [ ] P1.3 State schemas with load, default and debounce rules, with tests (spec 8.6, 15.3)
 - [ ] P1.4 `decideSave` with its truth-table tests (spec 12.3, 15.2)
