@@ -858,6 +858,27 @@ describe("SessionManager close (spec 12.5)", () => {
     expect(await manager.confirmCloseAll()).toBe(true);
   });
 
+  it("confirmCloseAll that returns true destroys every viewer first (chip 6 ruling 3)", async () => {
+    const { manager, dialogs, viewers } = setup();
+    await manager.start();
+    for (const ref of [A, B, C]) await manager.openRefs([ref]);
+    viewers[1].setDirty(true);
+    dialogs.answer("discard");
+    expect(await manager.confirmCloseAll()).toBe(true);
+    expect(viewers.length).toBe(3);
+    expect(viewers.map((v) => v.destroyed)).toEqual([true, true, true]);
+  });
+
+  it("confirmCloseAll that returns false destroys no viewer", async () => {
+    const { manager, dialogs, viewers } = setup();
+    await manager.start();
+    for (const ref of [A, B, C]) await manager.openRefs([ref]);
+    viewers[1].setDirty(true);
+    dialogs.answer("cancel");
+    expect(await manager.confirmCloseAll()).toBe(false);
+    expect(viewers.map((v) => v.destroyed)).toEqual([false, false, false]);
+  });
+
   it("confirmCloseAll flushes the savers, and the session holds only its schema fields", async () => {
     vi.useFakeTimers();
     const { manager, files } = setup();

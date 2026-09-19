@@ -185,6 +185,18 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    **Not checked live:** the XFA banner (no XFA sample; the unit tests cover `isXfa` and
    Dismiss) and Print (it opens the native print dialog; U3 covers it).
 
+8. **No PDF.js frame is alive when the window closes** (chip 6, ruling 3 on chip 5's known
+   issue 3). PDF.js adds its own `beforeunload` handler inside each iframe whose form store
+   is modified. After the user chooses Discard, that viewer is still modified, so the Tauri
+   window could raise PDF.js's "Leave site?" prompt. Ruled 2026-09-19: when
+   `confirmCloseAll()` is about to return true, `SessionManager` first calls `dropViewer()`
+   on every tab, after the savers flush. Removing an iframe does not raise the prompt. Two
+   tests cover it: a `true` result leaves every `FakeViewer` destroyed, a `false` result
+   destroys none. U12 in `docs/user-checks-phase-1.md` checks it in the real window.
+
+9. **Chip 5's `SessionManager.print` (deviation 13) and small choices (deviation 14) are
+   ratified** (chip 6, ruling 2).
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -299,23 +311,7 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
 
 For the orchestrator.
 
-1. **PDF.js marks some files changed when nothing changed** (spec 9.5 `hasChanges`). The
-   harness shows two cases. Neither loses data. Both nag, and PDFluffer promises no
-   nagging.
-   - **A radio group with a selected button.** On a `form-basic.pdf` saved with Post
-     chosen, the tab turns dirty seconds after opening, with no edit. PDF.js's form store
-     then held `{value: false}` for the two other buttons in the group (`24R`, `29R`), and
-     `_annotationStorageModified` was true. Rendering the selected button writes "off" for
-     its siblings. Seen on two separate opens.
-   - **Entering the signature tool** on a file that already carries saved annotations
-     turned the tab dirty before anything was placed.
-
-   The effect: closing such a tab asks Save, Discard, Cancel, and Save writes a harmless
-   append. I left the spec 9.5 rule alone. A fix changes the dirty design, for example
-   comparing the store's values with the file's own on first render, and I could not find
-   one that is safe: resetting the flag after a page renders could hide a real edit made
-   before a later page rendered. **Question:** accept this for version 1 and list it in
-   spec 19, or should a later chip design a stricter change test?
+None open.
 
 ## Known issues
 
@@ -333,5 +329,18 @@ For the orchestrator.
    changes. PDF.js adds its own `beforeunload` handler inside each iframe whose form store
    is modified. Chrome shows one prompt and logs "Blocked attempt to show multiple
    'beforeunload' confirmation panels" for each other dirty viewer. Harmless in the
-   harness. **Chip 6 should check** whether the same prompt appears when the Tauri window
-   closes after the user chose Discard, since those viewers are still modified.
+   harness. For the Tauri window, see decision 8.
+
+4. **PDF.js marks some files changed when nothing changed** (spec 9.5 `hasChanges`). The
+   harness shows two cases. Neither loses data. Both nag, and PDFluffer promises no
+   nagging.
+   - **A radio group with a selected button.** On a `form-basic.pdf` saved with Post
+     chosen, the tab turns dirty seconds after opening, with no edit. PDF.js's form store
+     then held `{value: false}` for the two other buttons in the group (`24R`, `29R`), and
+     `_annotationStorageModified` was true. Rendering the selected button writes "off" for
+     its siblings. Seen on two separate opens.
+   - **Entering the signature tool** on a file that already carries saved annotations
+     turned the tab dirty before anything was placed.
+
+   The effect: closing such a tab asks Save, Discard, Cancel, and Save writes a harmless
+   append. Ruled 2026-09-19: chip 7 investigates. Do not change `hasChanges` before then.

@@ -299,8 +299,8 @@ export class SessionManager {
     return true;
   }
 
-  confirmCloseAll(): Promise<boolean> {
-    return confirmCloseAll({
+  async confirmCloseAll(): Promise<boolean> {
+    const ok = await confirmCloseAll({
       tabs: () => this.tabs,
       has: (tab) => this.has(tab),
       activate: (tab) => this.activate(tab.id),
@@ -309,6 +309,10 @@ export class SessionManager {
         await Promise.all([this.flush(this.sessionSaver, "session"), this.flush(this.historySaver, "history")]);
       },
     });
+    // Chip 6 ruling: no modified PDF.js frame may be alive when the window goes, or PDF.js
+    // raises its own "Leave site?" prompt. Removing an iframe does not raise it.
+    if (ok) for (const tab of this.tabs) tab.dropViewer();
+    return ok;
   }
 
   private askToSave(tab: DocumentSession): Promise<boolean> {
