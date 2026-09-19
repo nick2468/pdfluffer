@@ -24,6 +24,11 @@ iframe per tab.
   or `npm run tauri`. The setting does not survive between tool calls. PowerShell:
   `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"`. Git Bash:
   `export PATH="$HOME/.cargo/bin:$PATH"`. If `rustc` is not there, stop and tell the user.
+- **Commands you hand to the user must say `npm.cmd` and `npx.cmd`, not `npm` and `npx`.**
+  The user's PowerShell blocks `.ps1` scripts, and Node 24 ships `npm.ps1`, so a plain `npm`
+  fails for them with "running scripts is disabled". Your own tool shells are not affected.
+  The full line for the desktop app is:
+  `$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"; npm.cmd run tauri dev`
 - **Node 24.** The machine runs the Node 24 line, and `.node-version` says `24.21.0`, the
   pin every sibling app uses. Keep Vitest at `^4.1.11` to match them.
 - **`samples-private/` holds the user's real documents.** Never commit, quote, summarise or
