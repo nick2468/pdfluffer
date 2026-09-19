@@ -1,0 +1,2 @@
+# Vendored PDF.js: store every byte exactly as unpacked (spec D6).
+public/pdfjs/** -text
