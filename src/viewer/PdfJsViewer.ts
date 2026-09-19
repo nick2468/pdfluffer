@@ -1,0 +1,368 @@
+// The PDF.js bridge (spec 9). This is the only file that may name PDFViewerApplication or
+// reach into the viewer iframe (D7). PDF.js itself is vendored unchanged in public/pdfjs.
+
+import type { DocInfo, ExportResult, Viewer, ViewerEvents, ViewState } from './Viewer';
+import injectCss from './viewerInject.css?raw';
+
+// Only the PDF.js members this file uses. Checked against 6.3.289, see BUILD-NOTES.md.
+
+interface PdfJsEventBus {
+  on(name: string, listener: (event: PdfJsBusEvent) => void): void;
+  off(name: string, listener: (event: PdfJsBusEvent) => void): void;
+}
+
+interface PdfJsBusEvent { message?: string; }
+
+interface PdfJsDocument {
+  annotationStorage: { size: number };
+  isPureXfa: boolean;
+}
+
+interface PdfJsPageViewer {
+  currentPageNumber: number;
+  currentScaleValue: string;
+  pagesRotation: number;
+}
+
+interface PdfJsDownloadManager {
+  download(data: Uint8Array | undefined): void;
+  downloadData(): void;
+  openOrDownloadData(): boolean;
+}
+
+interface CaptureDownloadManager extends PdfJsDownloadManager {
+  onData: ((bytes: Uint8Array) => void) | null;
+}
+
+interface PdfJsApp {
+  initializedPromise: Promise<void>;
+  eventBus: PdfJsEventBus;
+  pdfViewer: PdfJsPageViewer;
+  pdfDocument: PdfJsDocument | null;
+  pdfThumbnailViewer: { hasStructuralChanges?: () => boolean } | null;
+  pagesCount: number;
+  downloadManager: PdfJsDownloadManager | null;
+  download(): Promise<void>;
+  downloadOrSave(): Promise<void>;
+  open(args: { data: Uint8Array; filename: string }): Promise<void>;
+  _annotationStorageModified?: boolean;
+  _mergedDocumentNeedsSaving?: boolean;
+}
+
+interface PdfJsAppOptions {
+  set(name: string, value: unknown): void;
+  get(name: string): unknown;
+}
+
+interface PdfJsWindow {
+  PDFViewerApplication: PdfJsApp;
+  PDFViewerApplicationOptions: PdfJsAppOptions;
+}
+
+// Spec 9.2. Do not add an option that is not in that table.
+const OPTIONS: [string, string | number | boolean][] = [
+  ['defaultUrl', ''],
+  ['disablePreferences', true],
+  ['enableSignatureEditor', true],
+  ['enableSplitMerge', true],
+  ['enableHighlightFloatingButton', true],
+  ['enableXfa', true],
+  ['enableScripting', true],
+  ['enablePermissions', false],
+  ['viewOnLoad', 1],
+  ['disableHistory', true],
+  ['viewerCssTheme', 0],
+  ['annotationEditorMode', 0],
+];
+
+const VIEWER_URL = '/pdfjs/web/viewer.html';
+const DIRTY_POLL_MS = 1000;
+
+function applyOptions(options: PdfJsAppOptions): void {
+  for (const [name, value] of OPTIONS) {
+    try {
+      options.set(name, value);
+      // AppOptions.set ignores an unknown name or a wrong type without throwing.
+      if (options.get(name) !== value) console.warn(`PDF.js option rejected: ${name}`);
+    } catch (err) {
+      console.warn(`PDF.js option rejected: ${name}`, err);
+    }
+  }
+}
+
+// Spec 9.1 step 1: one listener on the parent document, registered at import time (F1).
+// Each mounting iframe waits here until PDF.js reports that its window has loaded.
+interface PendingMount {
+  iframe: HTMLIFrameElement;
+  onLoaded(win: PdfJsWindow): void;
+}
+
+const pendingMounts = new Set<PendingMount>();
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('webviewerloaded', (event) => {
+    const source = (event as CustomEvent<{ source?: unknown }>).detail?.source;
+    for (const entry of pendingMounts) {
+      if (source !== undefined && entry.iframe.contentWindow === source) {
+        pendingMounts.delete(entry);
+        entry.onLoaded(source as unknown as PdfJsWindow);
+        return;
+      }
+    }
+  });
+}
+
+type ListenerMap = { [K in keyof ViewerEvents]: Set<ViewerEvents[K]> };
+
+export class PdfJsViewer implements Viewer {
+  private iframe: HTMLIFrameElement | null = null;
+  private app: PdfJsApp | null = null;
+  private pending: PendingMount | null = null;
+  private rejectMount: ((reason: Error) => void) | null = null;
+  private destroyed = false;
+  private visible = true;
+  private dirty = false;
+  private pollTimer: number | null = null;
+  private busListeners: [string, (event: PdfJsBusEvent) => void][] = [];
+  private listeners: ListenerMap = {
+    viewchange: new Set(),
+    dirtychange: new Set(),
+    shortcut: new Set(),
+    externallink: new Set(),
+    error: new Set(),
+  };
+
+  // Spec 9.5: replaces PDF.js's download manager so saved bytes come back to us.
+  private readonly capture: CaptureDownloadManager = {
+    onData: null,
+    download(data: Uint8Array | undefined) { if (data && this.onData) this.onData(data); },
+    downloadData() {}, openOrDownloadData() { return false; },
+  };
+
+  async mount(container: HTMLElement): Promise<void> {
+    if (this.iframe) throw new Error('This viewer is already mounted.');
+    if (this.destroyed) throw new Error('This viewer has been destroyed.');
+
+    const iframe = document.createElement('iframe');
+    iframe.title = 'PDF viewer';
+    iframe.allow = 'fullscreen';
+    Object.assign(iframe.style, {
+      position: 'absolute',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      border: '0',
+    });
+    this.iframe = iframe;
+
+    const loaded = new Promise<PdfJsWindow>((resolve, reject) => {
+      this.rejectMount = reject;
+      this.pending = {
+        iframe,
+        onLoaded: (win) => {
+          // Spec 9.1 step 3: synchronously, inside the event. Options set later are ignored.
+          applyOptions(win.PDFViewerApplicationOptions);
+          resolve(win);
+        },
+      };
+      pendingMounts.add(this.pending);
+    });
+
+    iframe.src = VIEWER_URL;
+    container.appendChild(iframe);
+
+    const win = await loaded;
+    this.pending = null;
+    const app = win.PDFViewerApplication;
+    await app.initializedPromise;
+    if (this.destroyed) throw new Error('This viewer was destroyed while it was mounting.');
+    this.rejectMount = null;
+    this.app = app;
+
+    app.downloadManager = this.capture;
+    this.injectStyle();
+    this.listenOnBus('pagechanging', () => this.emit('viewchange', this.getViewState()));
+    this.listenOnBus('scalechanging', () => this.emit('viewchange', this.getViewState()));
+    this.listenOnBus('rotationchanging', () => this.emit('viewchange', this.getViewState()));
+    this.setVisible(this.visible);
+  }
+
+  async load(bytes: Uint8Array, filename: string, view: ViewState | null): Promise<DocInfo> {
+    const app = this.requireApp();
+    const bus = app.eventBus;
+    let onPagesInit: (() => void) | null = null;
+    let onError: ((event: PdfJsBusEvent) => void) | null = null;
+
+    const pagesInit = new Promise<void>((resolve, reject) => {
+      onPagesInit = () => {
+        if (view) this.applyView(view);
+        resolve();
+      };
+      onError = (event) => reject(new Error(event.message || 'The document could not be opened.'));
+      bus.on('pagesinit', onPagesInit);
+      bus.on('documenterror', onError);
+    });
+
+    try {
+      const opened = app.open({ data: bytes.slice(), filename });   // .slice() is required (F4)
+      // PDF.js dispatches documenterror before open() rejects, so the first rejection wins.
+      await Promise.all([opened, pagesInit]);
+    } finally {
+      if (onPagesInit) bus.off('pagesinit', onPagesInit);
+      if (onError) bus.off('documenterror', onError);
+    }
+
+    this.pollDirty();
+    return { pageCount: app.pagesCount, isXfa: app.pdfDocument?.isPureXfa === true };
+  }
+
+  hasChanges(): boolean {
+    const app = this.app;
+    if (!app) return false;
+    // Spec 9.5, revised 2026-09-19. The `?? 0` only satisfies strict null checks.
+    const annotations = app._annotationStorageModified === true
+                     && (app.pdfDocument?.annotationStorage.size ?? 0) > 0;   // add-then-delete is not a change
+    const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
+    const merged = app._mergedDocumentNeedsSaving === true;
+    return annotations || structural || merged;
+  }
+
+  async exportBytes(): Promise<ExportResult> {
+    const app = this.requireApp();
+    const capture = this.capture;
+    if (!this.hasChanges()) return { mode: 'none' };
+    const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
+    const merged = app._mergedDocumentNeedsSaving === true;
+    const viaSave = !structural && (app.pdfDocument?.annotationStorage.size ?? 0) > 0;
+    // Declared with `as` so TypeScript does not narrow them to their first values.
+    let captured = null as Uint8Array | null;
+    let fellBack = false as boolean;
+    const originalDownload = app.download;
+    capture.onData = b => { captured = b; };
+    if (viaSave) app.download = async () => { fellBack = true; };  // F7: here a download IS the failure fallback
+    try { await app.downloadOrSave(); }
+    finally { app.download = originalDownload; capture.onData = null; }
+    if (fellBack || !captured || captured.length === 0) {
+      // also covers save() returning early on _saveInProgress, and extractPages giving nothing
+      throw new Error('The viewer could not write your changes. Nothing was saved.');
+    }
+    this.pollDirty();
+    return { mode: structural || merged ? 'rewrite' : 'append', bytes: captured };
+  }
+
+  getViewState(): ViewState {
+    const pdfViewer = this.app?.pdfViewer;
+    if (!pdfViewer) return { page: 1, scale: 'auto', rotation: 0 };
+    return {
+      page: pdfViewer.currentPageNumber,
+      scale: String(pdfViewer.currentScaleValue),
+      rotation: pdfViewer.pagesRotation,
+    };
+  }
+
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    if (this.iframe) {
+      // Never display: none. PDF.js lays pages out wrongly in a frame with no size (spec 9.1).
+      this.iframe.style.visibility = visible ? 'visible' : 'hidden';
+      this.iframe.style.pointerEvents = visible ? 'auto' : 'none';
+    }
+    if (!this.app) return;
+    if (visible) {
+      if (this.pollTimer === null) {
+        this.pollTimer = window.setInterval(() => this.pollDirty(), DIRTY_POLL_MS);
+      }
+    } else {
+      this.stopPolling();
+    }
+    this.pollDirty();
+  }
+
+  print(): void {
+    this.iframe?.contentWindow?.print();
+  }
+
+  focus(): void {
+    this.iframe?.contentWindow?.focus();
+  }
+
+  on<K extends keyof ViewerEvents>(event: K, listener: ViewerEvents[K]): () => void {
+    const set = this.listeners[event] as Set<ViewerEvents[K]>;
+    set.add(listener);
+    return () => { set.delete(listener); };
+  }
+
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.stopPolling();
+    if (this.pending) {
+      pendingMounts.delete(this.pending);
+      this.pending = null;
+    }
+    if (this.rejectMount) {
+      this.rejectMount(new Error('This viewer was destroyed while it was mounting.'));
+      this.rejectMount = null;
+    }
+    if (this.app) {
+      for (const [name, listener] of this.busListeners) this.app.eventBus.off(name, listener);
+      this.capture.onData = null;
+    }
+    this.busListeners = [];
+    for (const set of Object.values(this.listeners)) set.clear();
+    this.iframe?.remove();
+    this.iframe = null;
+    this.app = null;
+  }
+
+  private requireApp(): PdfJsApp {
+    if (!this.app) throw new Error('The viewer is not mounted yet.');
+    return this.app;
+  }
+
+  private emit<K extends keyof ViewerEvents>(event: K, ...args: Parameters<ViewerEvents[K]>): void {
+    const set = this.listeners[event] as Set<(...a: Parameters<ViewerEvents[K]>) => void>;
+    for (const listener of set) listener(...args);
+  }
+
+  private listenOnBus(name: string, listener: (event: PdfJsBusEvent) => void): void {
+    this.requireApp().eventBus.on(name, listener);
+    this.busListeners.push([name, listener]);
+  }
+
+  // Spec 9.3: rotation, then scale, then page, clamped to the page count.
+  private applyView(view: ViewState): void {
+    const app = this.requireApp();
+    const pdfViewer = app.pdfViewer;
+    pdfViewer.pagesRotation = view.rotation;
+    pdfViewer.currentScaleValue = view.scale;
+    pdfViewer.currentPageNumber = Math.min(Math.max(1, Math.round(view.page)), Math.max(1, app.pagesCount));
+  }
+
+  // Spec 9.4. The vendored viewer.html has a CSP meta tag with `style-src 'self'`, which
+  // blocks a <style> element. A constructed stylesheet is not inline, so the CSP allows it.
+  // It must come from the iframe window's own CSSStyleSheet constructor.
+  private injectStyle(): void {
+    const win = this.iframe?.contentWindow as (Window & typeof globalThis) | null | undefined;
+    const doc = this.iframe?.contentDocument;
+    if (!win || !doc) return;
+    const sheet = new win.CSSStyleSheet();
+    sheet.replaceSync(injectCss);
+    doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, sheet];
+  }
+
+  private pollDirty(): void {
+    const dirty = this.hasChanges();
+    if (dirty !== this.dirty) {
+      this.dirty = dirty;
+      this.emit('dirtychange', dirty);
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer !== null) {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+}

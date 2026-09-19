@@ -1,0 +1,10 @@
+/* Applied to the PDF.js iframe by PdfJsViewer as a constructed stylesheet (spec 9.4, and
+   deviation 7 in BUILD-NOTES.md). It may only hide elements.
+   Ids confirmed in public/pdfjs/web/viewer.html, see BUILD-NOTES.md. */
+#secondaryOpenFile,
+#downloadButton,
+#secondaryDownload,
+#viewBookmark,
+#viewBookmarkSeparator {
+  display: none !important;
+}
