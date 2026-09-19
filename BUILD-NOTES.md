@@ -147,6 +147,44 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    recent item carries the view. The tab objects inside it stay the same.
    `clearHistory()` still clears at once. The confirm step lives in the app menu.
 
+7. **Harness checks H1 to H10 (chip 5, plan P1.14).** Run on 2026-09-19 in the built-in
+   browser pane against the Vite server on port 1420. It was this repo's
+   `node_modules/vite/bin/vite.js`, started from this checkout, and it hot-reloaded each
+   edit. The pane cannot drive a native file dialog. As in item 4, a page script patched
+   `HTMLInputElement.prototype.click` so the adapter's hidden input received files from
+   `samples/`. Everything after that was the app's own code, driven by real clicks and key
+   presses. **Limit of the tool:** the pane's key presses carry `keyCode` 0. PDFluffer reads
+   `key`, so its own shortcuts work. PDF.js reads `keyCode`, so PDF.js's own shortcuts
+   (Ctrl+F, Ctrl+C) do not fire from this tool.
+
+   | # | Result | What I saw |
+   |---|---|---|
+   | H1 | builder checked, pass | Filled Full name, Email, Subscribe, Country (New Zealand) and Contact by. The dirty dot and ` *` in the title appeared within about a second. |
+   | H2 | builder checked, pass | Ctrl+S showed "Save changes to form-basic.pdf?". Overwrite cleared the dot. Chose Post, pressed Ctrl+S: no dialog, the dot cleared. |
+   | H3 | builder checked, pass | Zoomed to 160%, reloaded. The tab came back at 160% with every saved value, Post included. The file has one page, so "same page" rests on the unit tests. See question 1: the tab later turned dirty with no edit. |
+   | H4 | builder checked, pass | On `flat-form.pdf`: added "Harness Text", drew a signature with "Save signature" ticked, placed it, saved (Overwrite). After a reload the file showed both. The signature menu listed the saved signature, and choosing it placed it again, twice. PDF.js put it at its own default spot, not where I clicked. |
+   | H5 | builder checked, pass | Four tabs. Ctrl+Tab and Ctrl+Shift+Tab cycled and wrapped, both from inside the PDF and with focus on a tab bar button. Ctrl+W on a dirty tab asked Save, Discard, Cancel. Cancel and Escape kept it open and dirty. Save wrote, closed it and activated the right neighbour. Discard closed without writing: reopened, the field still held the saved value. Closing the last tab activated the left neighbour. In desktop Chrome, Chrome keeps Ctrl+Tab for itself. U1 covers the real app. |
+   | H6 | builder checked, pass | Focus inside the PDF. Ctrl+S opened PDFluffer's first-save dialog, and a listener on the iframe window saw no keydown, so PDF.js never got the key. Ctrl+O called PDFluffer's picker once. No request left `localhost:1420` and no download started. |
+   | H7 | builder checked, pass | Computed styles in the iframe: `secondaryOpenFile`, `downloadButton` and `secondaryDownload` hidden. `printButton`, `viewFindButton` and the highlight, text, draw, image and signature buttons visible. |
+   | H8 | builder checked, pass | `fake-signed.pdf` showed the Signed chip. The sidebar's page tools are a checkbox per thumbnail and a Manage menu (Copy, Cut, Delete, Export selected...). Delete removed page 2 and the tab turned dirty. Save showed "This PDF is digitally signed". |
+   | H9 | USER check | Search builder checked: the find button, "Page 2", Enter gave "1 of 1 match" and moved to page 2. Copy and paste not checked: the pane's drag made no selection, and its Ctrl+C has no `keyCode`. |
+   | H10 | builder checked, pass | Every request in the network panel, and every resource entry in the page and each iframe (60), came from `http://localhost:1420`. |
+
+   **Steps for H9 (USER check).** Run `npm.cmd run dev` and open `http://localhost:1420`.
+   1. Open `samples/three-pages.pdf` with the + button.
+   2. Click in the page, press Ctrl+F, type `Page 2`, press Enter. The view moves to page 2.
+   3. Drag across the words "Page 2", press Ctrl+C.
+   4. Paste into Notepad. It shows "Page 2".
+
+   **Also checked in the pane:** the app menu (Recent, disabled items, Escape, an outside
+   click, a click into the PDF), About (version 0.1.0, PDF.js 6.3.289, the no-network
+   line), Settings (the checkbox saves and follows the snapshot), Clear history (Cancel
+   keeps it, confirming leaves "No recent files" and the tabs), the not-found panel and
+   Locate, the window title, and the external link dialog. For the link I added an `<a>`
+   to the viewer page by script and clicked it for real. Cancel kept the page where it was.
+   **Not checked live:** the XFA banner (no XFA sample; the unit tests cover `isXfa` and
+   Dismiss) and Print (it opens the native print dialog; U3 covers it).
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -229,11 +267,55 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
       `SessionManager.ts`. The spec 8.4 "private" fields are public to TypeScript so the
       manager and the flow functions can reach them. No snapshot carries them.
 
+13. **`SessionManager.print(tabId)` added** (not in spec 8.5). Spec 11.3 puts Print in the
+    app menu, and components may not touch a viewer. It prints a `ready` tab and does
+    nothing otherwise. Test-first in `SessionManager.test.ts`.
+
+14. **Small choices the chip left open** (chip 5):
+    - The parent window also swallows F5, Ctrl+R and Ctrl+Shift+R in production builds, the
+      same as the iframe (spec 9.6), because a reload loses edits wherever focus is.
+      `isReloadKey` counts F5 with Ctrl or Shift too.
+    - Ctrl+Shift+O and Ctrl+Shift+W are not shortcuts. Only the six chords of spec 11.6 are.
+    - The parent window ignores shortcuts while a modal dialog is open, so Ctrl+S cannot
+      start a second save.
+    - `ChoiceDialog` handles Escape on `keydown`. The browser's `cancel` event did not fire
+      for the pane's key presses. A `cancel` or `close` from the browser is still answered.
+    - A dialog focuses its primary button. With none, it focuses the Escape button, never a
+      danger button. So Enter in Clear history and the signature guard means Cancel.
+    - Clear history's confirm button is labelled "Clear history" (id `ok`, kind `danger`).
+    - About uses `ChoiceDialog` with the body on three lines. Settings has its own
+      `<dialog>` with a Close button.
+    - The app menu also closes when the window loses focus, because a click into a viewer
+      iframe never reaches the parent document.
+    - Tabs are focusable. Enter or Space activates one.
+    - The not-found panel shows `files.describe(ref)`. In the harness that is "(browser
+      harness) <name>". In Tauri it will be the path.
+    - The empty state renders for a moment before `start()` restores the tabs.
+    - After a dialog closes, the browser puts focus back where it was. PDFluffer does not
+      refocus the viewer.
+    - `shortcutFor` and `isReloadKey` live in `src/viewer/shortcutFor.ts`.
+
 ## Questions for the user
 
 For the orchestrator.
 
-None open.
+1. **PDF.js marks some files changed when nothing changed** (spec 9.5 `hasChanges`). The
+   harness shows two cases. Neither loses data. Both nag, and PDFluffer promises no
+   nagging.
+   - **A radio group with a selected button.** On a `form-basic.pdf` saved with Post
+     chosen, the tab turns dirty seconds after opening, with no edit. PDF.js's form store
+     then held `{value: false}` for the two other buttons in the group (`24R`, `29R`), and
+     `_annotationStorageModified` was true. Rendering the selected button writes "off" for
+     its siblings. Seen on two separate opens.
+   - **Entering the signature tool** on a file that already carries saved annotations
+     turned the tab dirty before anything was placed.
+
+   The effect: closing such a tab asks Save, Discard, Cancel, and Save writes a harmless
+   append. I left the spec 9.5 rule alone. A fix changes the dirty design, for example
+   comparing the store's values with the file's own on first render, and I could not find
+   one that is safe: resetting the flag after a page renders could hide a real edit made
+   before a later page rendered. **Question:** accept this for version 1 and list it in
+   spec 19, or should a later chip design a stricter change test?
 
 ## Known issues
 
@@ -246,3 +328,10 @@ None open.
    and lets the tab close whatever it resolves. localStorage writes inside the handler are
    synchronous, so state saves before the first `await` still land. The Tauri adapter
    (chip 6) is not affected.
+
+3. **PDF.js asks "Leave site?" on a reload of the harness** when a viewer has unsaved
+   changes. PDF.js adds its own `beforeunload` handler inside each iframe whose form store
+   is modified. Chrome shows one prompt and logs "Blocked attempt to show multiple
+   'beforeunload' confirmation panels" for each other dirty viewer. Harmless in the
+   harness. **Chip 6 should check** whether the same prompt appears when the Tauri window
+   closes after the user chose Discard, since those viewers are still modified.
