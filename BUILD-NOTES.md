@@ -210,6 +210,100 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
 9. **Chip 5's `SessionManager.print` (deviation 13) and small choices (deviation 14) are
    ratified** (chip 6, ruling 2).
 
+10. **The annotation half of `hasChanges` counts only effective changes** (chip 7, known
+    issue 4). Rule: the chip's "compare against the file, never against the clock". The
+    pure rule is in `src/viewer/effectiveChange.ts`. `PdfJsViewer.ts` gathers the facts.
+
+    **The rule.** The modified flag stays the first gate, then the add-then-delete test.
+    Then every storage entry counts as a change unless it is one of two proven no-ops:
+    - A plain object whose only key is `value`, for a widget id in the loaded file's field
+      list, where the value equals the file's. For a checkbox or radio button the value
+      must be a boolean, and "on" means the file's value equals the widget's own on-state
+      name. For a text field it must be the same string. This is the worker's own save
+      test (`pdf.worker.mjs` text `:54306`, checkbox `:54982`, radio button `:55031`): it
+      writes nothing for such an entry.
+    - An editor that wraps an annotation already in the file (`annotationElementId` set),
+      is not deleted, is not in edit mode, and whose `serialize()` returns null. PDF.js's
+      own `hasBeenModified` and `modifiedIds` use the same test, and `serializable` leaves
+      such an editor out of a save.
+
+    The rule is not applied, so every entry counts as before chip 7, in three cases:
+    - **An editor is active, or ink mode is on.** Before saving, `downloadOrSave` calls
+      `endCurrentEditing()` (`viewer.mjs:19649`). That commits the active editor and ends an
+      ink drawing session (`pdf.mjs:3082`). Until then that work is not in the storage. Only
+      the ink editor draws in sessions (`isDrawer`, `pdf.mjs:22038`), and leaving the mode
+      commits the session first (`updateMode`, `pdf.mjs:3600`). Both the viewer's mode and
+      the UI manager's mode are checked, so a mode change in progress is covered.
+    - **After any export, until the next load.** An append save does not reload the viewer,
+      so the field list still describes the old file (point 6).
+    - **The field list could not be read**, or the UI manager is missing.
+
+    Dropdowns and list boxes always count: their stored value shape was not proven. Text
+    fields always count when the file has XFA (`getMetadata().info.IsXFAPresent`, and a
+    missing flag counts as XFA): the worker then writes a text value even when unchanged
+    (`_hasValueFromXFA`, `pdf.worker.mjs:54135`).
+
+    **Why no real edit can be hidden.** Clean is reported only when every entry a save
+    would write after its own `endCurrentEditing` step is one the worker skips or
+    `serializable` leaves out, measured against the file the viewer loaded, while that file
+    is still the one on disk. The first two guards make "after `endCurrentEditing`" equal to
+    "now". The third makes "the file loaded" equal to "the file on disk". Each no-op test
+    repeats the worker's own test, so a save would leave the file as it is. Any shape the
+    rule does not know counts as a change. Structural and merged changes are untouched.
+
+    **The six investigation points** (harness, 2026-09-19):
+    1. **Shape.** `getFieldObjects()` returns a `Map` from field name to an array. A parent
+       entry has `type: ""` and `kidIds`. Widgets: text `{ id, value, defaultValue, type:
+       "text" }`; checkbox `{ id, value: "Yes" | "Off", exportValues: "Yes", type:
+       "checkbox" }`; radio button `{ id, value: <the group's value>, exportValues: <this
+       button's on-state name>, type: "radiobutton" }`; dropdown `{ id, value, items: [{
+       exportValue, displayValue }], type: "combobox" }`. So a radio button's own on-value
+       is `exportValues` (a string, despite the name), and it is on when `value ===
+       exportValues`. The Map comes from the iframe's realm, so `instanceof Map` is false
+       from the app. The first harness run caught this: it failed safe (dirty). The rule
+       now tests the tag, and a unit test covers a Map with a foreign prototype.
+    2. **Baseline after Save and reopen.** Proven. After saving Email, closing and reopening,
+       the field list gave `Email` for all three radio buttons and `Off` for Subscribe. It is
+       read once per `load()`, from the document that load opened.
+    3. **Case 2.** Entering the signature tool on `flat-form.pdf` (a saved text box and a
+       saved signature) put two editors in the storage: `FreeTextEditor` for `10R` and
+       `StampEditor` for `11R`, neither in edit mode, both serialising to null.
+       `serializable` was already empty. So entering the tool stores nothing a save would
+       write. Leaving the tool emptied the storage.
+    4. **Cost.** No cache. The rule runs only while the modified flag is true, and reads the
+       storage entries directly. It never calls `serializable`. It stops at the first
+       change. It calls `serialize()` only on an editor of an existing annotation, and for
+       an unchanged stamp that returns before any bitmap work (`pdf.mjs:26663`). The field
+       list is read once per load.
+    5. **`exportBytes` agrees.** It still starts with `if (!this.hasChanges()) return {
+       mode: 'none' }`, so only no-op entries give `none`.
+    6. **After an append save.** The storage keeps its entries and the field list still
+       describes the old file: after ticking Subscribe, saving, then unticking, the rule
+       itself, given that list, reported no change. `exportBytes` drops the baseline before
+       it saves, so the tab was dirty, as it must be. The baseline returns on the next load.
+
+    **Harness checks** (chip 7), in the built-in browser pane against this repo's Vite on
+    port 1420, the page reloaded after each code change. Files came in through the
+    patched file input described in item 4. Clicks, typing and Ctrl+S, Ctrl+W were real
+    input, except where noted.
+
+    | # | Result | What I saw |
+    |---|---|---|
+    | 1 | builder checked, pass | Fresh `form-basic.pdf`: chose Email, Overwrite, closed, reopened from Recent. Storage held `24R` and `34R` `{value:false}`, modified flag true. Clean after 10 s. Ctrl+W closed it with no dialog. The same held for the older copy saved with Post, before and after the final code change. |
+    | 2 | builder checked, pass | On the reopened file, chose Phone: dirty by the first read, under 1.5 s. Save asked Overwrite (first save in a new tab), and the dot cleared. |
+    | 3 | builder checked, clean | Ticked Subscribe: dirty. Unticked it, back to the file's Off: clean. |
+    | 4 | builder checked, clean | Typed "Ab" into Full name: dirty. The pane's Backspace and Delete keys did not edit the field (the `keyCode` limit in item 7), so a script set the field to "" and fired `input`, the event PDF.js listens to. Storage held `{value:""}`, equal to the file: clean. |
+    | 5 | builder checked, pass | Reopened (file: Phone, Subscribe Off). Ticked Subscribe, saved (append, no reload), unticked. Every entry then matched the loaded file, and the rule given that list said "no change". The tab was dirty, because the export had dropped the baseline. |
+    | 6 | builder checked, clean | `flat-form.pdf`, signature tool: two untouched editors, modified flag true, tab clean. After leaving the tool the storage was empty, still clean. Repeated after the final code change. In ink mode, after one stroke, the storage held the same two untouched editors but not the stroke, and the tab was dirty: the ink guard keeps today's rule there. Leaving ink mode committed the stroke as a new `InkEditor`, still dirty. |
+    | 7 | builder checked, pass | `three-pages.pdf`: added a text box, left the tool (dirty), moved it by dragging (still dirty), deleted it with its own delete button (clean, storage empty). |
+    | 8 | builder checked, pass | H1: typed a name and picked Australia (the dropdown by script, firing `input`): dirty within a second. H2: Ctrl+S asked "Save changes to form-basic.pdf?", Overwrite cleared it. Chose Post, Ctrl+S: no dialog, cleared. H8: `fake-signed.pdf` showed Signed. Deleted page 2 from the sidebar: dirty. Save showed "This PDF is digitally signed". Cancelled, then discarded. |
+
+    Console: the known "Leave site?" lines from the forced reloads (known issue 3), and
+    once `Uncaught (in promise) startCleanup: Page 2 is currently rendering` from PDF.js.
+    Chip 7's code never calls `cleanup()`. The likely source is PDF.js itself: its
+    `annotationEditorMode` setter calls `cleanup()` on a change to or from mode 0, and the
+    checks changed modes while pages rendered. Not investigated further.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -351,11 +445,36 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
       drops the chosen path, it returns the path as chosen.
     - The `open-files` listener ignores an empty list, though Rust never sends one.
 
+17. **`hasChanges` no longer matches the spec 9.5 code block** (chip 7). The annotation
+    half was `_annotationStorageModified === true && annotationStorage.size > 0`. It is now
+    `annotationsChanged(app)`, which keeps both tests as its first two gates and then
+    applies the rule in decision 10. Chip 7 ordered the change. Spec 9.5 needs the new
+    text. `exportBytes` is unchanged apart from dropping the baseline before it saves.
+
 ## Questions for the user
 
 For the orchestrator.
 
-None open.
+1. **Work in an unfinished editor shows clean, and Ctrl+W loses it** (found by chip 7,
+   known issue 5). This is older than chip 7: the code before it gives the same result.
+   PDF.js adds a new text box to its storage only when the text box is committed, and an
+   ink drawing only when the drawing session ends. Until then the modified flag stays
+   false and the storage has no entry, so `hasChanges()` is false.
+   Builder checked in the harness: on `three-pages.pdf`, chose the text tool, clicked the
+   page and typed "Pending". The storage was empty, the UI manager's active editor was the
+   `FreeTextEditor`, and the tab was clean. Ctrl+W closed the tab with no dialog, and the
+   text was gone. One ink stroke in ink mode behaves the same: drawn, not in the storage,
+   tab clean. PDF.js's own save commits both first (`endCurrentEditing`, decision 10).
+   A fix is a design choice, so I did not make one. Two options:
+   - **A (recommended).** Add `commitPendingEdits()` to the `Viewer` interface.
+     `PdfJsViewer` calls PDF.js's `endCurrentEditing()`. The session calls it before every
+     decision that reads dirtiness: close tab, close window, save. The dot still shows
+     clean while typing, but no close or save can lose the text. Session and interface
+     change, plus tests.
+   - **B.** Count an active editor, or ink mode, as dirty. Smaller, but the dot shows while
+     a text box is merely selected for editing or the ink tool is merely open.
+   The poll must not commit: committing every second would end each ink session after one
+   stroke.
 
 ## Known issues
 
@@ -388,3 +507,17 @@ None open.
 
    The effect: closing such a tab asks Save, Discard, Cancel, and Save writes a harmless
    append. Ruled 2026-09-19: chip 7 investigates. Do not change `hasChanges` before then.
+
+   **Fixed by chip 7, both cases** (decision 10). Case 1: the render-written entries match
+   the loaded file, so they no longer count. Case 2: entering the signature tool wraps the
+   file's own annotations in editors that serialise to nothing, and those no longer count.
+   What still nags, on purpose:
+   - In ink mode, or while an editor is active, every entry counts as before.
+   - After a save, until the tab is reopened, every entry counts as before. From the
+     source, a radio group rendered again in that time does not set the modified flag,
+     because `setValue` (`pdf.mjs:6926`) sees the same stored values. Not checked live.
+   - Dropdowns and list boxes always count, and text fields always count in a file with
+     XFA.
+
+5. **Work in an unfinished text box or ink drawing is not seen as a change.** Older than
+   chip 7. Ctrl+W then closes the tab without asking and the work is lost. See question 1.
