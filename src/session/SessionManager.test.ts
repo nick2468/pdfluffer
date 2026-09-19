@@ -145,7 +145,7 @@ describe("SessionManager opening and activating", () => {
     expect(await manager.closeTab(snap().tabs[1].id)).toBe(true);
     expect(active()?.ref).toBe(A);
     expect(await manager.closeTab(snap().tabs[0].id)).toBe(true);
-    expect(snap()).toEqual({ tabs: [], activeTabId: null });
+    expect(snap()).toMatchObject({ tabs: [], activeTabId: null });
   });
 
   it("closing a tab destroys its viewer, and closing an inactive tab keeps the active one", async () => {
@@ -211,7 +211,6 @@ describe("SessionManager snapshots", () => {
     const before = manager.getSnapshot();
     expect(manager.getSnapshot()).toBe(before);
     viewers[0].setDirty(false); // no change
-    viewers[0].emit("viewchange", { page: 1, scale: "auto", rotation: 0 }); // not in the snapshot
     await manager.activate(before.activeTabId as string); // already active and ready
     expect(manager.getSnapshot()).toBe(before);
 
@@ -227,6 +226,80 @@ describe("SessionManager snapshots", () => {
     off();
     viewers[0].setDirty(false);
     expect(notified).toBe(1);
+  });
+});
+
+describe("SessionManager snapshot recent and settings (spec 8.5)", () => {
+  it("start puts the stored settings and the first 15 history items in the snapshot", async () => {
+    const { manager, files, snap } = setup();
+    const items: HistoryStateV1["items"] = Array.from({ length: 20 }, (_, i) => ({
+      ref: `C:\old\${i}.pdf`, name: `${i}.pdf`, lastOpened: "2026-01-01T00:00:00.000Z", view: null,
+    }));
+    await files.saveState<HistoryStateV1>("history", { version: 1, items });
+    await files.saveState<SettingsV1>("settings", { version: 1, restoreSession: false, keepBackup: false });
+    await manager.start();
+    expect(snap().settings).toEqual({ version: 1, restoreSession: false, keepBackup: false });
+    expect(snap().recent).toHaveLength(15);
+    expect(snap().recent).toBe(manager.getRecent());
+    expect(snap().settings).toBe(manager.getSettings());
+  });
+
+  it("opening a file gives a new snapshot with the file first in recent", async () => {
+    const { manager, snap } = setup();
+    await manager.start();
+    const before = snap();
+    expect(before.recent).toEqual([]);
+    await manager.openRefs([A]);
+    expect(snap()).not.toBe(before);
+    expect(snap().recent.map((i) => i.ref)).toEqual([A]);
+  });
+
+  it("clearHistory gives a new snapshot with an empty recent list and notifies", async () => {
+    const { manager, snap } = setup();
+    await manager.start();
+    await manager.openRefs([A, B]);
+    const before = snap();
+    let notified = 0;
+    manager.subscribe(() => notified++);
+    manager.clearHistory();
+    expect(snap()).not.toBe(before);
+    expect(snap().recent).toEqual([]);
+    expect(snap().tabs).toHaveLength(2);
+    expect(notified).toBe(1);
+  });
+
+  it("updateSettings gives a new snapshot with the new settings and notifies", async () => {
+    const { manager, snap } = setup();
+    await manager.start();
+    const before = snap();
+    let notified = 0;
+    manager.subscribe(() => notified++);
+    manager.updateSettings({ restoreSession: false });
+    expect(snap()).not.toBe(before);
+    expect(snap().settings).toEqual({ version: 1, restoreSession: false, keepBackup: false });
+    expect(notified).toBe(1);
+  });
+
+  it("viewchange gives a new snapshot whose recent item carries the view", async () => {
+    const { manager, viewers, snap } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    const before = snap();
+    const view: ViewState = { page: 2, scale: "page-width", rotation: 0 };
+    viewers[0].emit("viewchange", view);
+    expect(snap()).not.toBe(before);
+    expect(snap().recent[0].view).toEqual(view);
+    expect(snap().tabs[0]).toBe(before.tabs[0]);
+  });
+
+  it("Save As gives a new snapshot with the new file first in recent", async () => {
+    const { manager, files, snap, viewer, id } = await openDirty();
+    files.queueSaveTarget("C:\docs\copy.pdf");
+    const before = snap();
+    expect(await manager.saveAs(id)).toBe(true);
+    expect(snap()).not.toBe(before);
+    expect(snap().recent[0].ref).toBe("C:\docs\copy.pdf");
+    expect(viewer.loads).toHaveLength(1);
   });
 });
 
@@ -406,7 +479,7 @@ describe("SessionManager start and restore (spec 12.6)", () => {
     await files.saveState<SettingsV1>("settings", { version: 1, restoreSession: false, keepBackup: false });
     await files.saveState("session", savedSession([A, B], 0));
     await manager.start();
-    expect(snap()).toEqual({ tabs: [], activeTabId: null });
+    expect(snap()).toMatchObject({ tabs: [], activeTabId: null });
     expect(viewers).toHaveLength(0);
   });
 
@@ -855,7 +928,7 @@ describe("SessionManager shortcuts (spec 11.6)", () => {
     for (const name of ["save", "saveAs", "closeTab", "nextTab", "prevTab"] as const) {
       await manager.handleShortcut(name);
     }
-    expect(snap()).toEqual({ tabs: [], activeTabId: null });
+    expect(snap()).toMatchObject({ tabs: [], activeTabId: null });
     files.queuePickFiles([A, B]);
     await manager.handleShortcut("open");
     expect(snap().tabs.map((t) => t.ref)).toEqual([A, B]);

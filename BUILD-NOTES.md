@@ -139,6 +139,14 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    functions over the tab and a small context object the manager passes in, and the manager
    is 478 lines.
 
+6. **Chip 4's known issue 3 is answered by a spec change** (spec 8.5, revised 2026-09-19).
+   `SessionSnapshot` now carries `recent` (the first 15 history items) and `settings`.
+   Every history change publishes: open, Locate, Save As, `viewchange` and `clearHistory`.
+   `updateSettings` publishes too. `getRecent()` and `getSettings()` stay, and return the
+   same objects the snapshot holds. A `viewchange` now gives a new snapshot, because the
+   recent item carries the view. The tab objects inside it stay the same.
+   `clearHistory()` still clears at once. The confirm step lives in the app menu.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -238,9 +246,3 @@ None open.
    and lets the tab close whatever it resolves. localStorage writes inside the handler are
    synchronous, so state saves before the first `await` still land. The Tauri adapter
    (chip 6) is not affected.
-
-3. **Settings and the Recent list are not in the snapshot** (spec 8.5 fixes its shape). So
-   `clearHistory` and `updateSettings` change nothing that `useSyncExternalStore` sees.
-   Chip 5 must read `getRecent()` and `getSettings()` when a menu or dialog opens, and the
-   empty state must re-render itself after Clear history. The confirm step for Clear
-   history (spec 11.5) also belongs to chip 5. `clearHistory()` clears at once.

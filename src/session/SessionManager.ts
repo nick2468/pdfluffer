@@ -17,7 +17,13 @@ import {
 
 export type { DialogButton, Dialogs } from "./dialogTexts";
 
-export interface SessionSnapshot { tabs: TabSnapshot[]; activeTabId: string | null; }
+export interface SessionSnapshot {
+  tabs: TabSnapshot[];
+  activeTabId: string | null;
+  /** The first 15 history items, for the Recent menu. */
+  recent: HistoryStateV1['items'];
+  settings: SettingsV1;
+}
 
 export interface SessionManagerOptions {
   now?: () => string;
@@ -29,12 +35,12 @@ const APP_NAME = "PDFluffer";
 export class SessionManager {
   private tabs: DocumentSession[] = [];
   private activeTabId: string | null = null;
-  private snapshot: SessionSnapshot = { tabs: [], activeTabId: null };
   private listeners = new Set<() => void>();
 
   private settings: SettingsV1 = parseSettings(null);
   private history: HistoryItem[] = [];
   private recent: HistoryItem[] | null = null;
+  private snapshot: SessionSnapshot = { tabs: [], activeTabId: null, recent: [], settings: this.settings };
   private sessionSaver: DebouncedSaver<SessionStateV1>;
   private historySaver: DebouncedSaver<HistoryStateV1>;
   private lastSessionJson: string | null = null;
@@ -224,6 +230,7 @@ export class SessionManager {
       viewer.on("viewchange", (view) => {
         tab.view = view;
         this.setHistory(setHistoryView(this.history, tab.ref, view, this.sameFile));
+        this.publish();
       }),
       viewer.on("shortcut", (name) => { void this.handleShortcut(name); }),
       viewer.on("externallink", (url) => { void this.confirmExternalLink(url); }),
@@ -265,6 +272,7 @@ export class SessionManager {
       publish: () => this.publish(),
       touchHistory: (tab) => {
         this.setHistory(touchHistory(this.history, tab.ref, tab.name, this.now(), this.sameFile));
+        this.publish();
       },
     };
   }
@@ -380,6 +388,7 @@ export class SessionManager {
 
   updateSettings(patch: Partial<Omit<SettingsV1, 'version'>>): void {
     this.settings = { ...this.settings, ...patch, version: 1 };
+    this.publish();
     this.files.saveState("settings", this.settings)
       .catch((err: unknown) => console.warn("Could not save settings state:", err));
   }
@@ -392,6 +401,7 @@ export class SessionManager {
 
   clearHistory(): void {
     this.setHistory([]);
+    this.publish();
   }
 
   // Internals
@@ -404,12 +414,15 @@ export class SessionManager {
   private publish(): void {
     this.updateTitle();
     const tabs = this.tabs.map((t) => t.snapshot());
+    const recent = this.getRecent();
     const old = this.snapshot;
     const same = old.activeTabId === this.activeTabId
+      && old.recent === recent
+      && old.settings === this.settings
       && old.tabs.length === tabs.length
       && old.tabs.every((t, i) => t === tabs[i]);
     if (same) return;
-    this.snapshot = { tabs, activeTabId: this.activeTabId };
+    this.snapshot = { tabs, activeTabId: this.activeTabId, recent, settings: this.settings };
 
     const state: SessionStateV1 = {
       version: 1,
