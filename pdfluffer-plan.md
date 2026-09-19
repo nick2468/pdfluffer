@@ -12,7 +12,7 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P0.5 Add the npm scripts `dev`, `build`, `check`, `samples`, `tauri`. Install Vitest
 - [x] P0.6 Vendor PDF.js 6.3.289 into `public/pdfjs/` unchanged. Write `VENDOR-PDFJS.md` (spec 6.2)
 - [x] P0.7 Write `scripts/make-samples.ts`. Generate the four sample PDFs (spec 14)
-- [ ] P0.8 Re-check facts F1 to F10 against the vendored files. Record each (spec 7)
+- [x] P0.8 Re-check facts F1 to F10 against the vendored files. Record each (spec 7)
 - [ ] P0.9 Write `Viewer.ts` and a first `PdfJsViewer.ts`: mount, options, load, `hasChanges`, `exportBytes` (spec 8.3, 9.1-9.5)
 - [ ] P0.10 Throwaway spike page: one viewer, open `form-basic.pdf` from bytes, the signature tool is visible, fill a field, `exportBytes()` differs from the original
 - [ ] P0.11 Answer the dirty-signal question. Record whether fallback B applies (spec 9.5)
