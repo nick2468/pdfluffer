@@ -376,7 +376,11 @@ A plain TypeScript class. No React inside it. React reads it through one hook,
 `useSession()`, built on `useSyncExternalStore`.
 
 ```ts
-export interface SessionSnapshot { tabs: TabSnapshot[]; activeTabId: string | null; }
+export interface SessionSnapshot {
+  tabs: TabSnapshot[]; activeTabId: string | null;
+  recent: HistoryStateV1['items'];   // first 15. Added 2026-09-19 so the screen re-renders
+  settings: SettingsV1;              // when Clear history or a setting changes
+}
 
 export class SessionManager {
   constructor(files: FileAdapter, createViewer: () => Viewer, dialogs: Dialogs);
