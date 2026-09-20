@@ -37,6 +37,8 @@ export class DocumentSession {
 
   /** Set when an export succeeded but its bytes are not on disk yet (the user cancelled). */
   unsavedMode: 'append' | 'rewrite' | null = null;
+  /** True while an engine operation or a revert is running on this tab (spec 13.3). */
+  busy = false;
   /** The in-flight load, so a second activate does not load twice. */
   loading: Promise<void> | null = null;
   /** Unsubscribes the viewer's event listeners. */

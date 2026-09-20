@@ -9,8 +9,8 @@ import { FakeViewer } from "../viewer/fakeViewer";
 import type { ViewState } from "../viewer/Viewer";
 import {
   closeDirtyDialog, ENCRYPTED_DIALOG, externalLinkDialog, firstSaveDialog, LOCKED_DIALOG,
-  OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG, OPERATION_GUARD_DIALOG, SAVE_FAILED_TITLE,
-  SIGNATURE_GUARD_DIALOG, type DialogButton, type Dialogs,
+  OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG, OPERATION_GUARD_DIALOG, REVERT_DIALOG,
+  REVERT_FAILED_TITLE, SAVE_FAILED_TITLE, SIGNATURE_GUARD_DIALOG, type DialogButton, type Dialogs,
 } from "./dialogTexts";
 import { SessionManager } from "./SessionManager";
 import type { HistoryStateV1, SessionStateV1, SettingsV1 } from "./state";
@@ -998,6 +998,8 @@ class FakeEngine implements EngineAdapter {
   readonly name = "fake";
   readonly runs: { op: EngineOp; bytes: Uint8Array }[] = [];
   result: EngineResult | Error = { bytes: ENGINE_BYTES, mode: "rewrite" };
+  /** Set to hold the run open, so a test can try to start a second one. */
+  gate: Promise<void> | null = null;
 
   capabilities(): ReadonlySet<Capability> {
     return new Set<Capability>(["pages.rotate", "flatten"]);
@@ -1005,23 +1007,31 @@ class FakeEngine implements EngineAdapter {
 
   async run(op: EngineOp, bytes: Uint8Array): Promise<EngineResult> {
     this.runs.push({ op, bytes: bytes.slice() });
+    if (this.gate) await this.gate;
     if (this.result instanceof Error) throw this.result;
     return this.result;
   }
 }
 
-describe("SessionManager runOp (spec 13.3)", () => {
-  /** One ready tab, one engine that can rotate and flatten, and no viewer changes yet. */
-  async function openWithEngine(files: [FileRef, Uint8Array?][] = [[A], [B]]) {
-    const engine = new FakeEngine();
-    const engines = new EngineRegistry();
-    engines.register(engine);
-    const env = setup({ files, engines });
-    await env.manager.start();
-    await env.manager.openRefs([A]);
-    return { ...env, engine, viewer: env.viewers[0], id: env.tab(0).id };
-  }
+/** A promise a test resolves by hand. */
+function gate(): { promise: Promise<void>; open: () => void } {
+  let open = (): void => {};
+  const promise = new Promise<void>((resolve) => { open = () => resolve(); });
+  return { promise, open };
+}
 
+/** One ready tab, one engine that can rotate and flatten, and no viewer changes yet. */
+async function openWithEngine(files: [FileRef, Uint8Array?][] = [[A], [B]]) {
+  const engine = new FakeEngine();
+  const engines = new EngineRegistry();
+  engines.register(engine);
+  const env = setup({ files, engines });
+  await env.manager.start();
+  await env.manager.openRefs([A]);
+  return { ...env, engine, viewer: env.viewers[0], id: env.tab(0).id };
+}
+
+describe("SessionManager runOp (spec 13.3)", () => {
   it("a successful operation marks the tab dirty and reloads the viewer once", async () => {
     const { manager, engine, viewer, id, tab } = await openWithEngine();
     viewer.viewState = { page: 3, scale: "page-width", rotation: 90 };
@@ -1184,6 +1194,184 @@ describe("SessionManager runOp (spec 13.3)", () => {
     dialogs.answer("discard");
     expect(await manager.closeTab(id)).toBe(true);
     expect(snap().tabs).toEqual([]);
+  });
+
+  it("a second operation cannot start while one is running", async () => {
+    const { manager, engine, id, viewer } = await openWithEngine();
+    const held = gate();
+    engine.gate = held.promise;
+    const first = manager.runOp(id, ROTATE);
+
+    expect(await manager.runOp(id, { kind: "flatten" })).toBe(false);
+    held.open();
+    expect(await first).toBe(true);
+    expect(engine.runs.map((r) => r.op.kind)).toEqual(["pages.rotate"]);
+    expect(viewer.loads).toHaveLength(2);
+
+    // The tab is free again once the first one has finished.
+    expect(await manager.runOp(id, { kind: "flatten" })).toBe(true);
+    expect(engine.runs).toHaveLength(2);
+  });
+
+  it("a busy tab does not block another tab", async () => {
+    const { manager, engine, tab } = await openWithEngine([[A], [B]]);
+    await manager.openRefs([B]);
+    const held = gate();
+    engine.gate = held.promise;
+    const first = manager.runOp(tab(0).id, ROTATE);
+    const second = manager.runOp(tab(1).id, ROTATE);
+    held.open();
+    expect(await first).toBe(true);
+    expect(await second).toBe(true);
+    expect(engine.runs).toHaveLength(2);
+  });
+});
+
+// Spec 13.5: the page the Rotate this page tool works on
+
+describe("SessionManager currentPage", () => {
+  it("is the page the viewer is showing", async () => {
+    const { manager, viewers, tab } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    expect(manager.currentPage(tab(0).id)).toBe(1);
+
+    viewers[0].viewState = { page: 3, scale: "auto", rotation: 0 };
+    viewers[0].emit("viewchange", viewers[0].getViewState());
+    expect(manager.currentPage(tab(0).id)).toBe(3);
+  });
+
+  it("is null for a tab that is not ready, and for an id that is not a tab", async () => {
+    const { manager, files, tab } = setup();
+    await files.saveState("session", savedSession([A, "C:\\gone\\x.pdf"], 0));
+    await manager.start();
+    expect(manager.currentPage(tab(1).id)).toBeNull();   // unloaded
+    await manager.activate(tab(1).id);
+    expect(tab(1).status).toBe("not-found");
+    expect(manager.currentPage(tab(1).id)).toBeNull();
+    expect(manager.currentPage("no-such-tab")).toBeNull();
+  });
+});
+
+// Spec 13.6: Revert to saved
+
+describe("SessionManager revert (spec 13.6)", () => {
+  const SAVED_AGAIN = new TextEncoder().encode("%PDF-1.7 what is on disk now");
+
+  async function openChanged() {
+    const env = await openDirty();
+    env.viewer.viewState = { page: 2, scale: "page-width", rotation: 90 };
+    return env;
+  }
+
+  it("asks first, and Cancel changes nothing", async () => {
+    const { manager, dialogs, viewer, id, tab } = await openChanged();
+    dialogs.answer("cancel");
+    await manager.revert(id);
+    expect(dialogs.asked).toEqual([asked(REVERT_DIALOG)]);
+    expect(tab(0).dirty).toBe(true);
+    expect(viewer.loads).toHaveLength(1);
+  });
+
+  it("re-reads the file, reloads the view and leaves the tab clean", async () => {
+    const { manager, files, dialogs, viewer, id, tab } = await openChanged();
+    files.addFile(A, "a.pdf", SAVED_AGAIN);
+    dialogs.answer("continue");
+    await manager.revert(id);
+    expect(viewer.loads).toHaveLength(2);
+    expect(viewer.loads[1]).toEqual({
+      bytes: SAVED_AGAIN, filename: "a.pdf", view: { page: 2, scale: "page-width", rotation: 90 },
+    });
+    expect(tab(0).dirty).toBe(false);
+    expect(files.writes).toEqual([]);
+  });
+
+  it("keeps saveConfirmed, so the next save still does not ask", async () => {
+    const { manager, files, dialogs, viewer, id, tab } = await openChanged();
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(tab(0).saveConfirmed).toBe(true);
+
+    dialogs.answer("continue");
+    await manager.revert(id);
+    expect(tab(0)).toMatchObject({ saveConfirmed: true, dirty: false });
+
+    viewer.setDirty(true);
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    expect(await manager.save(id)).toBe(true);
+    expect(files.writes).toHaveLength(2);
+  });
+
+  it("forgets that the user accepted a rewrite of a signed file", async () => {
+    // The rewritten bytes still carry the key, so the file on disk stays signed.
+    const REWRITTEN_SIGNED = new TextEncoder().encode("%PDF-1.7 rewritten /ByteRange [1 2 3 4]");
+    const { manager, dialogs, viewer, id, tab } = await openDirty([[A, SIGNED], [B]]);
+    viewer.nextExport = { mode: "rewrite", bytes: REWRITTEN_SIGNED };
+    dialogs.answer("continue", "overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(dialogs.asked.map((a) => a.title)).toEqual([
+      SIGNATURE_GUARD_DIALOG.title, firstSaveDialog("a.pdf").title,
+    ]);
+
+    dialogs.answer("continue");
+    await manager.revert(id);
+    expect(tab(0).hasDigitalSignature).toBe(true);
+
+    // The tab is signed and the acknowledgement is gone, so the guard must come back.
+    viewer.setDirty(true);
+    viewer.nextExport = { mode: "rewrite", bytes: REWRITTEN_SIGNED };
+    dialogs.answer("cancel");
+    expect(await manager.save(id)).toBe(false);
+    expect(last(dialogs.asked)).toEqual(asked(SIGNATURE_GUARD_DIALOG));
+  });
+
+  it("clears the bytes an engine operation was holding", async () => {
+    const engines = new EngineRegistry();
+    engines.register(new FakeEngine());
+    const env = setup({ engines });
+    await env.manager.start();
+    await env.manager.openRefs([A]);
+    const id = env.tab(0).id;
+    expect(await env.manager.runOp(id, ROTATE)).toBe(true);
+
+    env.dialogs.answer("continue");
+    await env.manager.revert(id);
+    expect(env.tab(0).dirty).toBe(false);
+    expect(last(env.viewers[0].loads)?.bytes).toEqual(PLAIN);
+
+    // Nothing is held any more, so a save writes nothing.
+    expect(await env.manager.save(id)).toBe(true);
+    expect(env.files.writes).toEqual([]);
+  });
+
+  it("a read failure shows a dialog and changes nothing", async () => {
+    const { manager, files, dialogs, viewer, id, tab } = await openChanged();
+    files.failNext("read", A, new FileError("io", "Disk is asleep"));
+    dialogs.answer("continue", "ok");
+    await manager.revert(id);
+    expect(dialogs.asked[1]).toEqual({ title: REVERT_FAILED_TITLE, body: "Disk is asleep", buttons: ["ok"] });
+    expect(tab(0)).toMatchObject({ dirty: true, status: "ready" });
+    expect(viewer.loads).toHaveLength(1);
+  });
+
+  it("does nothing for a tab that is not ready", async () => {
+    const { manager, files, tab } = setup();
+    await files.saveState("session", savedSession([A, "C:\\gone\\x.pdf"], 0));
+    await manager.start();
+    await manager.activate(tab(1).id);
+    await manager.revert(tab(1).id);
+    await manager.revert("no-such-tab");
+  });
+
+  it("does nothing while an operation is running on that tab", async () => {
+    const { manager, engine, id, viewer } = await openWithEngine();
+    const held = gate();
+    engine.gate = held.promise;
+    const first = manager.runOp(id, ROTATE);
+    await manager.revert(id);
+    held.open();
+    expect(await first).toBe(true);
+    expect(viewer.loads).toHaveLength(2);
   });
 });
 

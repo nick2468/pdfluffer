@@ -2,7 +2,7 @@
 // through useSession(), built on useSyncExternalStore, so getSnapshot() must return the same
 // object until something changes.
 
-import { EngineError, type EngineOp } from "../engine/EngineAdapter";
+import { EngineError, type EngineAdapter, type EngineOp } from "../engine/EngineAdapter";
 import type { EngineRegistry } from "../engine/engineRegistry";
 import { FileError, type FileAdapter, type FileRef } from "../files/FileAdapter";
 import { hasDigitalSignature } from "../util/hasDigitalSignature";
@@ -10,7 +10,8 @@ import type { ShortcutName, Viewer } from "../viewer/Viewer";
 import { askToSave, confirmCloseAll, neighbourAfterClose } from "./closeFlow";
 import {
   BUTTON, ENCRYPTED_DIALOG, externalLinkDialog, OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG,
-  OPERATION_GUARD_DIALOG, saveFailedDialog, type DialogText, type Dialogs,
+  OPERATION_GUARD_DIALOG, REVERT_DIALOG, revertFailedDialog, saveFailedDialog,
+  type DialogText, type Dialogs,
 } from "./dialogTexts";
 import { DocumentSession, type TabSnapshot } from "./DocumentSession";
 import { messageOf, saveTab, saveTabAs, type SaveContext } from "./saveFlow";
@@ -308,13 +309,25 @@ export class SessionManager {
   // Running an engine operation (spec 13.3)
 
   /**
+   * The page the tab is showing, 1-based, for a tool that works on one page (spec 13.5).
+   * Null when the tab is not ready, so the tool does nothing rather than guessing.
+   */
+  currentPage(tabId: string): number | null {
+    const tab = this.find(tabId);
+    if (!tab || tab.status !== 'ready') return null;
+    // The stored view state, which lags by one event at most, then the viewer's own. A tab
+    // that has never fired viewchange still has a page, and it is the one on screen.
+    return tab.view?.page ?? tab.viewer?.getViewState().page ?? null;
+  }
+
+  /**
    * Runs one document operation over the tab's bytes. True when the document changed.
    * Nothing reaches disk: the tab goes dirty and the user saves when they choose to.
    * A user-level failure shows a dialog and returns false. It never rejects.
    */
   async runOp(tabId: string, op: EngineOp): Promise<boolean> {
     const tab = this.find(tabId);
-    if (!tab || tab.status !== 'ready' || !tab.viewer) return false;
+    if (!tab || tab.status !== 'ready' || !tab.viewer || tab.busy) return false;
 
     // Before any dialog: an operation no engine can run must not nag the user first.
     const adapter = this.engines?.findAdapter(op.kind) ?? null;
@@ -322,7 +335,15 @@ export class SessionManager {
       console.warn(`No engine can run ${op.kind}. The document is unchanged.`);
       return false;
     }
+    tab.busy = true;
+    try {
+      return await this.runOpOnce(tab, adapter, op);
+    } finally {
+      tab.busy = false;
+    }
+  }
 
+  private async runOpOnce(tab: DocumentSession, adapter: EngineAdapter, op: EngineOp): Promise<boolean> {
     this.commitPendingEdits(tab);
     if (tab.hasDigitalSignature && !tab.rewriteAcknowledged) {
       const choice = await this.ask(OPERATION_GUARD_DIALOG);
@@ -333,6 +354,7 @@ export class SessionManager {
     // Export first (spec 13.3 step 2), so form values the user typed are in the bytes the
     // engine reads. Whatever comes back is held as a rewrite until a save puts it on disk.
     const viewer = tab.viewer;
+    if (!viewer) return false;
     let exported;
     try {
       exported = await viewer.exportBytes();
@@ -382,6 +404,41 @@ export class SessionManager {
       tab.errorMessage = messageOf(err);
     }
     this.publish();
+  }
+
+  // Revert (spec 13.6)
+
+  /**
+   * Throws away every change since the last save and reads the file again. The tab ends
+   * clean, on the same page. `saveConfirmed` is kept: the user already said Overwrite for
+   * this file, and reverting is not a reason to ask again.
+   */
+  async revert(tabId: string): Promise<void> {
+    const tab = this.find(tabId);
+    if (!tab || tab.status !== 'ready' || !tab.viewer || tab.busy) return;
+    if (await this.ask(REVERT_DIALOG) !== BUTTON.continue.id || !this.has(tab)) return;
+
+    tab.busy = true;
+    try {
+      let bytes: Uint8Array;
+      try {
+        bytes = (await this.files.readFile(tab.ref)).bytes;
+      } catch (err) {
+        await this.ask(revertFailedDialog(messageOf(err)));
+        return;
+      }
+      const viewer = tab.viewer;
+      if (!this.has(tab) || !viewer) return;
+      tab.bytes = bytes;
+      tab.pendingEngineChanges = false;
+      tab.unsavedMode = null;
+      tab.rewriteAcknowledged = false;
+      tab.hasDigitalSignature = hasDigitalSignature(bytes);
+      this.publish();
+      await this.reload(tab, viewer);
+    } finally {
+      tab.busy = false;
+    }
   }
 
   // Closing (spec 12.5), in closeFlow.ts

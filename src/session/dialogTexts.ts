@@ -86,6 +86,34 @@ export function saveFailedDialog(message: string): DialogText {
   return { title: SAVE_FAILED_TITLE, body: message, buttons: [BUTTON.ok] };
 }
 
+/** Spec 13.5, before Flatten bakes everything into the pages. */
+export const FLATTEN_DIALOG: DialogText = {
+  title: "Flatten this PDF?",
+  body: "Flatten bakes form values, signatures and notes into the pages. They can no longer be edited. You can still use Revert to saved until you save.",
+  buttons: [{ id: BUTTON.continue.id, label: "Flatten", kind: "danger" }, BUTTON.cancel],
+};
+
+/** Spec 13.6, before Revert throws away everything since the last save. */
+export const REVERT_DIALOG: DialogText = {
+  title: "Revert to saved?",
+  body: "This discards every change since the last save.",
+  buttons: [{ id: BUTTON.continue.id, label: "Revert", kind: "danger" }, BUTTON.cancel],
+};
+
+export const OPEN_FAILED_TITLE = "Could not open";
+
+/** A file the Insert PDF tool could not read. The body is the error message. */
+export function openFailedDialog(message: string): DialogText {
+  return { title: OPEN_FAILED_TITLE, body: message, buttons: [BUTTON.ok] };
+}
+
+export const REVERT_FAILED_TITLE = "Could not revert";
+
+/** Spec 13.6, re-reading the file failed. The document is left as it was. */
+export function revertFailedDialog(message: string): DialogText {
+  return { title: REVERT_FAILED_TITLE, body: message, buttons: [BUTTON.ok] };
+}
+
 /** Spec 12.3, Save As onto a file that is open in another tab. */
 export const OPEN_ELSEWHERE_DIALOG: DialogText = {
   title: "File is open elsewhere",

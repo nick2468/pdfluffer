@@ -49,6 +49,10 @@ export class FakeViewer implements Viewer {
   async load(bytes: Uint8Array, filename: string, view: ViewState | null): Promise<DocInfo> {
     this.loads.push({ bytes: bytes.slice(), filename, view });
     if (this.loadError !== null) throw new Error(this.loadError);
+    // A fresh document has no changes, as PDF.js's new annotation storage has none.
+    // No dirtychange event: the manager reads hasChanges() itself after every load.
+    this.dirty = false;
+    this.pendingEdit = false;
     return { ...this.docInfo };
   }
 
