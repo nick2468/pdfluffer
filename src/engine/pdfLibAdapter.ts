@@ -6,7 +6,8 @@ import {
   EngineError, type Capability, type EngineAdapter, type EngineOp, type EngineResult,
 } from "./EngineAdapter";
 
-const CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['pages.insertPdf', 'pages.rotate']);
+const CAPABILITIES: ReadonlySet<Capability> =
+  new Set<Capability>(['pages.insertPdf', 'pages.rotate', 'flatten']);
 
 export class PdfLibAdapter implements EngineAdapter {
   readonly name = "pdf-lib";
@@ -34,8 +35,24 @@ async function apply(doc: PDFDocument, op: EngineOp): Promise<void> {
       return insertPdf(doc, op.other);
     case 'pages.rotate':
       return rotate(doc, op.pages, op.degrees);
+    case 'flatten':
+      return flattenForm(doc);
     default:
-      throw new EngineError('unsupported', `pdf-lib cannot run ${op.kind} yet.`);
+      // Unreachable while EngineOp names three kinds. It catches a fourth added later.
+      throw new EngineError('unsupported', `pdf-lib cannot run ${(op as EngineOp).kind}.`);
+  }
+}
+
+/**
+ * Step 1 of spec 13.4: draw every form field onto its page and remove the field. A file
+ * with no form is not an error, and neither is one field pdf-lib cannot draw: the rest of
+ * the flatten still runs.
+ */
+function flattenForm(doc: PDFDocument): void {
+  try {
+    doc.getForm().flatten();
+  } catch (err) {
+    console.warn("Could not flatten the form fields:", err);
   }
 }
 

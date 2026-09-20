@@ -1,6 +1,9 @@
-import { degrees, PDFDocument, toDegrees } from "@cantoo/pdf-lib";
+import {
+  decodePDFRawStream, degrees, PDFArray, PDFDocument, PDFRawStream, PDFStream, StandardFonts,
+  toDegrees,
+} from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
-import { EngineError } from "./EngineAdapter";
+import { EngineError, type EngineOp } from "./EngineAdapter";
 import { PdfLibAdapter } from "./pdfLibAdapter";
 
 // Spec 15 item 7. Every input is built here with @cantoo/pdf-lib, so no test reads a file.
@@ -38,6 +41,31 @@ async function pageSizes(bytes: Uint8Array): Promise<[number, number][]> {
   return doc.getPages().map((p) => [Math.round(p.getWidth()), Math.round(p.getHeight())]);
 }
 
+/** An XObject being drawn: a name, then the Do operator. */
+const DRAWS_XOBJECT = /\/[A-Za-z0-9_-]+ Do\b/;
+
+/** The operators of one page, decompressed, as text. */
+async function contentOf(bytes: Uint8Array, index = 0): Promise<string> {
+  const doc = await PDFDocument.load(bytes);
+  const contents = doc.getPages()[index].node.Contents();
+  const entries = contents instanceof PDFArray ? contents.asArray() : [contents];
+  const parts: string[] = [];
+  for (const entry of entries) {
+    const stream = doc.context.lookup(entry);
+    if (stream instanceof PDFRawStream) {
+      parts.push(new TextDecoder().decode(decodePDFRawStream(stream).decode()));
+    } else if (stream instanceof PDFStream) {
+      parts.push(stream.getContentsString());
+    }
+  }
+  return parts.join("\n");
+}
+
+async function fieldNames(bytes: Uint8Array): Promise<string[]> {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getForm().getFields().map((f) => f.getName());
+}
+
 /** Fails the test unless the call rejected with an EngineError carrying this code. */
 async function codeOf(run: Promise<unknown>): Promise<string> {
   try {
@@ -54,9 +82,14 @@ describe("PdfLibAdapter", () => {
     expect(engine.name).toBe("pdf-lib");
   });
 
-  it("refuses an operation it has no capability for", async () => {
+  it("has the three capabilities spec 13.4 names, and no more", async () => {
+    expect([...engine.capabilities()].sort()).toEqual(['flatten', 'pages.insertPdf', 'pages.rotate']);
+  });
+
+  it("refuses an operation kind it does not know", async () => {
     const bytes = await pdfWithPages([[200, 200]]);
-    expect(await codeOf(engine.run({ kind: 'flatten' }, bytes))).toBe("unsupported");
+    const madeUp = { kind: 'text.edit' } as unknown as EngineOp;
+    expect(await codeOf(engine.run(madeUp, bytes))).toBe("unsupported");
   });
 
   it("reports an encrypted file as encrypted, and rubbish as failed", async () => {
@@ -143,5 +176,44 @@ describe("PdfLibAdapter pages.rotate", () => {
   it("reports an encrypted file as encrypted", async () => {
     const bytes = await encryptedPdf();
     expect(await codeOf(engine.run({ kind: 'pages.rotate', pages: 'all', degrees: 90 }, bytes))).toBe("encrypted");
+  });
+});
+
+// Plan P2.5
+
+/** One page with a filled text field and a ticked checkbox. */
+async function pdfWithForm(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([300, 300]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const form = doc.getForm();
+  const who = form.createTextField("who");
+  who.setText("Nick");
+  who.addToPage(page, { x: 20, y: 200, width: 200, height: 20, font });
+  const agreed = form.createCheckBox("agreed");
+  agreed.check();
+  agreed.addToPage(page, { x: 20, y: 160, width: 16, height: 16 });
+  return doc.save();
+}
+
+describe("PdfLibAdapter flatten: form fields", () => {
+  it("removes every field and draws it on the page instead", async () => {
+    const bytes = await pdfWithForm();
+    expect(await fieldNames(bytes)).toEqual(["who", "agreed"]);
+    const result = await engine.run({ kind: 'flatten' }, bytes);
+    expect(result.mode).toBe("rewrite");
+    expect(await fieldNames(result.bytes)).toEqual([]);
+    expect(await contentOf(result.bytes)).toMatch(DRAWS_XOBJECT);
+  });
+
+  it("leaves a document with no form alone", async () => {
+    const bytes = await pdfWithPages([[200, 200], [200, 300]]);
+    const result = await engine.run({ kind: 'flatten' }, bytes);
+    expect(await pageSizes(result.bytes)).toEqual([[200, 200], [200, 300]]);
+    expect(await fieldNames(result.bytes)).toEqual([]);
+  });
+
+  it("reports an encrypted file as encrypted", async () => {
+    expect(await codeOf(engine.run({ kind: 'flatten' }, await encryptedPdf()))).toBe("encrypted");
   });
 });
