@@ -332,6 +332,35 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     - The case 1 file (the render-written radio entries, clean) still closed on Ctrl+W with
       no dialog. Committing does not make a quiet tab dirty.
 
+12. **The flatten stop rule (spec 13.4) did not trip** (chip 8, plan P2.6). Step 2 passed on
+    the first attempt, so both steps ship and the tool keeps the name "Flatten...".
+
+    The `@cantoo/pdf-lib` names spec 13.4 gives are all real, verified at source in
+    `node_modules/@cantoo/pdf-lib/cjs` on 2026-09-21: `page.node.newXObject(tag, ref)`
+    (`core/structures/PDFPageLeaf.d.ts:39`), `page.pushOperators(...ops)`
+    (`api/PDFPage.d.ts:701`), and `pushGraphicsState`, `concatTransformationMatrix`,
+    `drawObject`, `popGraphicsState` (`api/operators.d.ts`). Two names the spec does not
+    give: `PDFName.asString()` keeps the leading slash, so the subtype test uses
+    `decodeText()`; and `PDFArray.remove(index)` takes an index, not the object.
+
+    **Why nothing is silently lost.** An annotation is removed from `/Annots` only after it
+    has been drawn. Anything the rule cannot read, measure or resolve is left exactly where
+    it is, so a strange file keeps an annotation instead of losing one. Every lookup goes
+    through `context.lookup` with an `instanceof` test rather than pdf-lib's `lookupMaybe`,
+    which throws on a type it did not expect and would have failed the whole operation.
+
+    **Builder checked in the browser harness**, 2026-09-21, because unit tests can assert
+    the right operators in the wrong place. A generated page carrying a filled text field, a
+    `Stamp`, a `FreeText` and a `Link`, each with the same 10 by 10 appearance stream, was
+    rendered by the vendored PDF.js before and after `flatten`. The two renders are the
+    same: the stamp still fills its 100 by 100 rectangle and the FreeText its 20 by 40 one,
+    both the right way up, with the field's value now painted on the page. PDF.js reports
+    one annotation left, subtype `Link`, and `getFieldObjects()` empty. The check files were
+    written to `public/`, viewed through `pdfjs/web/viewer.html?file=`, and deleted.
+
+    Still outstanding by design: H11 needs the Document submenu (chip 9), and U2 and U10
+    style rendering in Acrobat, Chrome and Edge is plan item **P2.10, a USER check**.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -483,6 +512,36 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     it. It takes nothing, returns nothing, and is safe to call on any viewer at any time.
     `FakeViewer` implements it with a `pendingEdit` flag, so a test can hold work outside
     `hasChanges()` the way PDF.js does.
+
+19. **`runOp` looks for the adapter before it shows any dialog** (chip 8). Spec 13.3 starts
+    with the signature guard. An operation no engine can run must not make the user answer a
+    guard first and then find that nothing happened, so the adapter lookup comes first and
+    returns false with a `console.warn` and no dialog. Everything after it keeps the spec's
+    order: commit the open editor, guard, export, run.
+
+20. **The engine saves with `updateFieldAppearances: false`** (chip 8). pdf-lib's default is
+    true, which redraws every form field with pdf-lib's own font handling. A form filled in
+    the viewer already carries the appearances PDF.js wrote, and Insert PDF or Rotate has no
+    reason to touch them. Flatten still gets fresh appearances: `PDFForm.flatten()` updates
+    them itself first, which is its own default (`api/form/PDFForm.js:635`).
+
+21. **Small choices chip 8 left open:**
+    - `placementFor` lives in its own file, `src/engine/placement.ts`, not inside
+      `pdfLibAdapter.ts`. The chip asked for a pure function but not for a place. Its own
+      file keeps the geometry testable without loading pdf-lib at all.
+    - Spec 13.2 writes the tool's `run` context inline. It is a named `ToolContext`
+      interface here, so a tool can take the type. Same shape.
+    - The op switch ends in a `default:` that casts `never` back to `EngineOp` for the
+      message. It is unreachable while `EngineOp` names three kinds, and it catches a fourth
+      added later instead of silently doing nothing. A typing-only change.
+    - `runOp` does not set `unsavedMode` when the operation succeeds. `pendingEngineChanges`
+      already makes the tab dirty and makes the next save a rewrite, and `afterWrite` clears
+      both together. Setting it as well would hide a missing flag from the tests.
+    - The bytes are copied twice: `runOp` copies before handing them to the adapter, so no
+      adapter can change the tab's own array, and `pdfLibAdapter` copies again before
+      `PDFDocument.load`, which keeps its input for an incremental save.
+    - Nothing registers `PdfLibAdapter` yet. Chip 9 wires it into `services.ts` with the
+      tools and the Document submenu.
 
 ## Questions for the user
 

@@ -1,5 +1,5 @@
 // The engine contract (spec 13.1). An engine is whatever library actually changes the PDF
-// bytes. Nothing here imports React, the app, or PdfJsViewer: an engine never sees the viewer.
+// bytes. Nothing here imports React, the app frame, or the bridge: an engine never sees a viewer.
 
 export type Capability =
   | 'pages.insertPdf' | 'pages.rotate' | 'flatten'

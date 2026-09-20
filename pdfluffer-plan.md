@@ -46,12 +46,12 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 
 ## Phase 2 - engine adapter and document tools
 
-- [ ] P2.1 `EngineAdapter.ts`, `engineRegistry.ts`, `toolRegistry.ts` (spec 13.1, 13.2)
-- [ ] P2.2 `SessionManager.runOp` with the signature guard and `pendingEngineChanges` (spec 13.3)
-- [ ] P2.3 `pdfLibAdapter`: insert PDF, with tests (spec 13.4, 15.7)
-- [ ] P2.4 `pdfLibAdapter`: rotate, with tests
-- [ ] P2.5 `pdfLibAdapter`: flatten form fields, with tests
-- [ ] P2.6 `pdfLibAdapter`: flatten annotations, with tests. Apply the stop rule if needed (spec 13.4)
+- [x] P2.1 `EngineAdapter.ts`, `engineRegistry.ts`, `toolRegistry.ts` (spec 13.1, 13.2)
+- [x] P2.2 `SessionManager.runOp` with the signature guard and `pendingEngineChanges` (spec 13.3)
+- [x] P2.3 `pdfLibAdapter`: insert PDF, with tests (spec 13.4, 15.7)
+- [x] P2.4 `pdfLibAdapter`: rotate, with tests
+- [x] P2.5 `pdfLibAdapter`: flatten form fields, with tests
+- [x] P2.6 `pdfLibAdapter`: flatten annotations, with tests. Apply the stop rule if needed (spec 13.4)
 - [ ] P2.7 The four tools and the Document submenu (spec 13.5)
 - [ ] P2.8 Revert to saved. The backup setting, end to end (spec 13.6)
 - [ ] P2.9 Harness check H11 passes. `npm run check` passes. Commit
