@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "check": "tsc --noEmit && vitest run",
     "samples": "node scripts/make-samples.ts",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "smoke:prod": "node scripts/prod-smoke/run.mjs"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "2.11.1",

@@ -415,6 +415,35 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     network panel showed no pdf-lib request during start or document load, and exactly one
     at the first operation.
 
+## Orchestrator checks
+
+**Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
+drove the release exe (`src-tauri/target/release/pdfluffer.exe`, built 09:05, the binary the
+installer ships) through its WebView2 debugging port. It is now `npm run smoke:prod`
+(`scripts/prod-smoke/`). Proven **in the production build**, where the Tauri CSP and the
+embedded assets apply, which `tauri dev` does not exercise:
+
+- The page is `http://tauri.localhost/` and the PDF.js viewer loads. `.mjs` is served as
+  JavaScript (checked at source: `tauri-utils` 2.9.3 `mime_type.rs:66`).
+- A PDF passed as a launch argument opens in a tab. That is the double-click path.
+- The constructed stylesheet hides Open and Download. The signature tool is shown.
+- An edit raises the dot. Ctrl+S from inside the PDF opens PDFluffer's first-save dialog.
+  Overwrite wrote 7,948 -> 8,691 bytes, the first 7,948 unchanged (a true incremental save),
+  with no `.pdfluffer-tmp` left behind. The native window title followed the dirty state.
+- A second launch exits at once with status 0 and its file opens as a new active tab.
+  Launching an already-open file switches to its tab.
+- Closing with unsaved changes asks Save, Discard, Cancel. Cancel keeps the window and the
+  change. Discard closes it. No native "Leave site?" prompt appeared (decision 8 holds).
+- After a restart both tabs return with the right one active, only one viewer exists
+  (lazy loading), the saved value is present and the discarded one is not, and
+  `three-pages.pdf` comes back on page 3 at 150%.
+- Rotate all pages right gives 90,90,90 and a dirty tab, so the lazily loaded pdf-lib chunk
+  works under the production CSP. Revert to saved gives 0,0,0 and a clean tab.
+- No console error, no CSP violation, no exception, across both runs of the app.
+
+Not provable this way, so still USER checks: the installer, the Windows file association,
+window focus, native dialogs, printing, real drag and drop, other PDF viewers, and looks.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and

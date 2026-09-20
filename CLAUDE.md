@@ -46,6 +46,11 @@ the spec names a fallback or a decision rule, use it and record that you did.
 
 - `npm run check` runs `tsc --noEmit` and `vitest run`. It must pass before every commit.
 - `cargo test` in `src-tauri/` must pass before a commit that touches Rust.
+- `npm run smoke:prod` drives the REAL release build with no human at the window: launch
+  argument, save to disk, single instance, close dialogs, session restore, a Document tool,
+  and the console for CSP errors. Run it after any change that could affect the desktop app.
+  It needs a fresh `npm run tauri build` first, and PDFluffer must be closed. It backs up
+  and restores the user's saved state. Read the header of `scripts/prod-smoke/run.mjs`.
 - Never say something works unless you ran it and saw it. Say how you checked.
 - Checks marked **USER check** in the spec need a person at the real app. List them with
   exact steps. Do not tick them.

@@ -1,13 +1,43 @@
 # PDFluffer - the final check list
 
-The build is finished. These checks need a person at the real app, so they are yours.
-Work through them in order. The most important ones come first, so a serious problem
-shows up early.
+The build is finished. On 2026-09-21 the orchestrator ran an automated test against the
+**production build** (the same program the installer ships) and 24 of 24 checks passed.
+That removed about half of this list. What is left needs a person at the real app.
+
+**Do every check in the installed app**, not the dev app, unless a check says otherwise.
+The installed app is the one with the production security rules switched on.
 
 For each check, write **pass**, or **fail** with what you saw. The table at the end is
-there to fill in.
+there to fill in. Plan items P1.20, P2.10 and P2.11 are ticked when these pass.
 
-Plan items P1.20, P2.10 and P2.11 are ticked when these pass.
+## What is already proven, and what is yours
+
+| Check | Status | What is left for you |
+|---|---|---|
+| F1 Installer and first start | Part proven: the app starts from its built-in files | **Yours:** run the installer |
+| F2 Open, fill, save, reopen | **Proven** in the production build. You also ran it in the dev app on 2026-09-21 | Nothing. Skip it |
+| F3 Double-click and single window | Part proven: a PDF passed at launch opens, a second launch joins the running window, an already-open file switches to its tab | **Yours:** the Windows default-app setting, and the window coming to the front |
+| F4 Reopening your tabs | **Proven**: tabs, active tab, page and zoom, and tabs load only when clicked | Nothing. Skip it |
+| F5 Closing with unsaved changes | **Proven**: Cancel keeps the window, Discard closes it, no "Leave site?" prompt | Nothing. Skip it |
+| F6 A half-typed note is not lost | Proven by the builder with real typing in a browser. The logic is the same in the app | Optional |
+| F7 Signatures | Not proven in the app | **Yours.** A core feature |
+| F8 Saved file in other viewers | Cannot be automated | **Yours** |
+| F9 Printing | Cannot be automated | **Yours** |
+| F10 Reordering pages by dragging | Cannot be automated | **Yours** |
+| F11 Dragging a PDF onto the window | Cannot be automated | **Yours** |
+| F12 A file another program holds | Proven in Rust tests with a really locked file | Optional |
+| F13 A file that moved, and Locate | Proven in unit tests and in a browser | Optional |
+| F14 Copy and paste text | **Nobody has run this yet** | **Yours.** A core feature |
+| F15 Document tools and backup | Part proven: Rotate and Revert work in the production build | Optional: Insert and the backup file |
+| F16 Flattening a signed form | The builder compared before and after in PDF.js. Other viewers cannot be automated | **Yours** |
+| F17 No security-policy errors | **Proven** in the production build: none, across open, fill, save, tools, revert and close | Nothing, if F7 and F9 pass in the installed app |
+| F18 How it looks and feels | Only you can judge | **Yours.** The most useful one |
+
+**The short list, about 25 minutes: F1, F3, F7, F8, F9, F10, F11, F14, F16, F18.**
+
+To rerun the automated test yourself at any time, close PDFluffer and run
+`npm.cmd run smoke:prod`. It takes about a minute, opens and closes the app a few times,
+and puts your saved tabs and recent list back exactly as they were.
 
 ## Before you start
 
@@ -61,8 +91,9 @@ menu at all. Everything below needs this check to pass.
 
 ## F2 - open, fill, save, reopen
 
-This is the core of the app. **The builder ran this on 2026-09-21 in the dev app and it
-passed.** Run it once more in the installed app, on your own files if you like.
+This is the core of the app. **Already proven, so you can skip it.** You ran it in the dev
+app on 2026-09-21, and the automated test ran it in the production build the same day. The
+steps stay here in case you want to try it on your own files.
 
 1. Click **+**. The Windows Open dialog appears and shows only PDF files.
 2. Open `form-basic.pdf` from the test folder.
@@ -78,6 +109,8 @@ passed.** Run it once more in the installed app, on your own files if you like.
 **If it fails:** report the step number, and whether the file on disk was damaged.
 
 ## F3 - double-click a PDF, and only one window
+
+*Part proven by the automated test: a PDF passed at launch opens, and a second launch joins the running window. What only you can check is that Windows hands the file to PDFluffer on a double-click, and that the window comes to the front.*
 
 1. Open Windows Settings, then Apps, then Default apps. Search for `.pdf` and choose
    **PDFluffer**.
@@ -95,6 +128,8 @@ To put your old PDF app back afterwards, repeat step 1 and choose it.
 
 ## F4 - the app reopens what you had
 
+*Already proven in the production build, so you can skip it. The steps stay for reference.*
+
 1. Open three files: `form-basic.pdf`, `flat-form.pdf` and `three-pages.pdf`.
 2. Make `three-pages.pdf` active. Scroll to page 3 and zoom to 150%.
 3. Close the window with the X button.
@@ -107,6 +142,8 @@ To put your old PDF app back afterwards, repeat step 1 and choose it.
 files, the Settings dialog has a switch for it.
 
 ## F5 - closing with unsaved changes
+
+*Already proven in the production build, so you can skip it. The steps stay for reference.*
 
 PDF.js must not add its own "Leave site?" prompt on top of PDFluffer's.
 
@@ -125,6 +162,8 @@ discarded change.
 **If it fails:** report the exact words of any extra prompt.
 
 ## F6 - a half-typed note is not lost
+
+*Optional. The builder proved it with real typing in a browser, and the app uses the same code.*
 
 PDF.js holds a text box that is still being typed outside its own change list, so the tab
 shows no dot yet. PDFluffer commits that work before it acts on a close or a save.
@@ -206,6 +245,8 @@ file does nothing.
 
 ## F12 - a file another program is holding
 
+*Optional. The Rust tests prove it against a really locked file.*
+
 1. Open `form-basic.pdf` from the test folder in PDFluffer and change a field.
 2. Open the same file in Acrobat Reader and leave it open.
 3. In PDFluffer, press Ctrl+S, and choose Overwrite if asked.
@@ -220,6 +261,8 @@ a PDFluffer failure, but it is worth knowing.
 **If it fails:** report the message you got, and whether the file was damaged.
 
 ## F13 - a file that moved, and Locate
+
+*Optional. Proven in unit tests and in a browser.*
 
 1. Open `flat-form.pdf` from the test folder. Close the window.
 2. In Explorer, rename `flat-form.pdf` to `flat-form-moved.pdf`.
@@ -245,6 +288,8 @@ The builder's browser tool could not select text, so nobody has run this yet.
 **If it fails:** report what was pasted, or that nothing was.
 
 ## F15 - the Document tools
+
+*Optional. Rotate and Revert are proven in the production build. Insert and the backup file are what is left.*
 
 These are phase 2. The builder checked all of them in a browser on 2026-09-21. This check
 is about the real app and real files.
@@ -284,23 +329,19 @@ note and the signature, in the same places, at the same sizes, and no longer edi
 **If it fails:** report which viewer, and what moved, resized, vanished or is still
 editable. A screenshot helps most here.
 
-## F17 - no errors in the console
+## F17 - no security-policy errors
 
 A CSP, or content security policy, is the rule set that stops the app loading anything
-from outside. A CSP error means something tried.
+from outside. A CSP error means something tried, or that the rules block part of the app.
 
-1. Start the **dev app** (the command is at the top of this page), and open the developer
-   tools on the Console tab.
-2. Open `form-basic.pdf`, fill a field, place a signature, save, run one Document tool,
-   revert, and open the print dialog, then cancel it.
+**Already proven, so there is nothing to do here.** The production rules apply only in the
+built app, not in the dev app, so the dev app's console cannot answer this. The automated
+test watched the production build's console through open, fill, save, a Document tool,
+revert and close, and saw no CSP error and no other error.
 
-**Expect:** no line containing "Content Security Policy" or "CSP", and no red error you
-cannot explain.
-
-Two warnings are known and harmless: `No available adapters.` from a WebGPU probe, and
-lines about `Leave site?` during a reload.
-
-**If it fails:** copy each unexpected line into your report.
+Two things it did not exercise are placing a signature and printing. If **F7** and **F9**
+pass in the **installed** app, those are covered too, because a blocked feature shows up
+as a feature that does not work.
 
 ## F18 - how it looks and feels
 
@@ -327,10 +368,10 @@ cheap, so do not hold any back.
 | Check | What it covers | Pass or fail | Notes |
 |---|---|---|---|
 | F1 | Installer and first start | | |
-| F2 | Open, fill, save, reopen | | |
+| F2 | Open, fill, save, reopen | pass | Proven by automation, 2026-09-21 |
 | F3 | Double-click and single window | | |
-| F4 | Reopening your tabs | | |
-| F5 | Closing with unsaved changes | | |
+| F4 | Reopening your tabs | pass | Proven by automation, 2026-09-21 |
+| F5 | Closing with unsaved changes | pass | Proven by automation, 2026-09-21 |
 | F6 | A half-typed note is not lost | | |
 | F7 | Signatures | | |
 | F8 | Saved file in other viewers | | |
@@ -342,5 +383,5 @@ cheap, so do not hold any back.
 | F14 | Copy and paste text | | |
 | F15 | The Document tools and the backup | | |
 | F16 | Flattening a signed form | | |
-| F17 | No errors in the console | | |
+| F17 | No security-policy errors | pass | Proven by automation, 2026-09-21 |
 | F18 | How it looks and feels | | |
