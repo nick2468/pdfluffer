@@ -1,12 +1,12 @@
 // The pdf-lib engine (spec 13.4). This is the only file under src/ that imports
 // @cantoo/pdf-lib. Every result is a whole new file, so its mode is always 'rewrite'.
 
-import { EncryptedPDFError, PDFDocument } from "@cantoo/pdf-lib";
+import { degrees, EncryptedPDFError, PDFDocument, toDegrees, type PDFPage } from "@cantoo/pdf-lib";
 import {
   EngineError, type Capability, type EngineAdapter, type EngineOp, type EngineResult,
 } from "./EngineAdapter";
 
-const CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['pages.insertPdf']);
+const CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>(['pages.insertPdf', 'pages.rotate']);
 
 export class PdfLibAdapter implements EngineAdapter {
   readonly name = "pdf-lib";
@@ -32,6 +32,8 @@ async function apply(doc: PDFDocument, op: EngineOp): Promise<void> {
   switch (op.kind) {
     case 'pages.insertPdf':
       return insertPdf(doc, op.other);
+    case 'pages.rotate':
+      return rotate(doc, op.pages, op.degrees);
     default:
       throw new EngineError('unsupported', `pdf-lib cannot run ${op.kind} yet.`);
   }
@@ -42,6 +44,25 @@ async function insertPdf(doc: PDFDocument, other: Uint8Array): Promise<void> {
   const source = await load(other);
   const copied = await doc.copyPages(source, source.getPageIndices());
   for (const page of copied) doc.addPage(page);
+}
+
+/** Turns each chosen page by delta. `pages` holds 1-based page numbers, or 'all'. */
+function rotate(doc: PDFDocument, pages: number[] | 'all', delta: number): void {
+  const all = doc.getPages();
+  let chosen: PDFPage[];
+  if (pages === 'all') {
+    chosen = all;
+  } else {
+    chosen = pages.map((number) => {
+      const page = Number.isInteger(number) ? all[number - 1] : undefined;
+      if (!page) throw new EngineError('failed', `This document has no page ${number}.`);
+      return page;
+    });
+  }
+  for (const page of chosen) {
+    const current = toDegrees(page.getRotation());
+    page.setRotation(degrees(((current + delta) % 360 + 360) % 360));
+  }
 }
 
 /** The one place an encrypted file is recognised. Everything else is a plain failure. */

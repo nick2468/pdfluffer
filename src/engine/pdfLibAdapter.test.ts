@@ -1,4 +1,4 @@
-import { PDFDocument } from "@cantoo/pdf-lib";
+import { degrees, PDFDocument, toDegrees } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
 import { EngineError } from "./EngineAdapter";
 import { PdfLibAdapter } from "./pdfLibAdapter";
@@ -12,6 +12,18 @@ async function pdfWithPages(sizes: [number, number][]): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   for (const size of sizes) doc.addPage(size);
   return doc.save();
+}
+
+/** A document of n pages, each already turned by the matching angle. */
+async function pdfWithRotations(angles: number[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  for (const angle of angles) doc.addPage([200, 300]).setRotation(degrees(angle));
+  return doc.save();
+}
+
+async function rotations(bytes: Uint8Array): Promise<number[]> {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getPages().map((p) => toDegrees(p.getRotation()));
 }
 
 async function encryptedPdf(): Promise<Uint8Array> {
@@ -88,5 +100,48 @@ describe("PdfLibAdapter pages.insertPdf", () => {
     const base = await pdfWithPages([[200, 200]]);
     const other = await encryptedPdf();
     expect(await codeOf(engine.run({ kind: 'pages.insertPdf', other }, base))).toBe("encrypted");
+  });
+});
+
+// Plan P2.4
+
+describe("PdfLibAdapter pages.rotate", () => {
+  it("turns every page when pages is 'all'", async () => {
+    const bytes = await pdfWithRotations([0, 90, 270]);
+    const result = await engine.run({ kind: 'pages.rotate', pages: 'all', degrees: 90 }, bytes);
+    expect(result.mode).toBe("rewrite");
+    expect(await rotations(result.bytes)).toEqual([90, 180, 0]);
+  });
+
+  it("turns only the pages it is given, by 1-based number", async () => {
+    const bytes = await pdfWithRotations([0, 0, 0]);
+    const result = await engine.run({ kind: 'pages.rotate', pages: [1, 3], degrees: 180 }, bytes);
+    expect(await rotations(result.bytes)).toEqual([180, 0, 180]);
+  });
+
+  it("turns anticlockwise and wraps below zero", async () => {
+    const bytes = await pdfWithRotations([0, 90]);
+    const result = await engine.run({ kind: 'pages.rotate', pages: 'all', degrees: -90 }, bytes);
+    expect(await rotations(result.bytes)).toEqual([270, 0]);
+  });
+
+  it("turns one page twice when it is named twice", async () => {
+    const bytes = await pdfWithRotations([0]);
+    const result = await engine.run({ kind: 'pages.rotate', pages: [1, 1], degrees: 90 }, bytes);
+    expect(await rotations(result.bytes)).toEqual([180]);
+  });
+
+  it("fails for a page number that is not in the document", async () => {
+    const bytes = await pdfWithRotations([0, 0]);
+    for (const pages of [[3], [0], [-1], [1.5], [1, 9]]) {
+      expect(await codeOf(engine.run({ kind: 'pages.rotate', pages, degrees: 90 }, bytes))).toBe("failed");
+    }
+    // Nothing was written, so the bytes the caller holds still say 0.
+    expect(await rotations(bytes)).toEqual([0, 0]);
+  });
+
+  it("reports an encrypted file as encrypted", async () => {
+    const bytes = await encryptedPdf();
+    expect(await codeOf(engine.run({ kind: 'pages.rotate', pages: 'all', degrees: 90 }, bytes))).toBe("encrypted");
   });
 });
