@@ -342,6 +342,10 @@ export interface Viewer {
   print(): void;
   focus(): void;
   on<K extends keyof ViewerEvents>(event: K, listener: ViewerEvents[K]): () => void;
+  /** Commit a text box being typed or an ink stroke in progress. PDF.js keeps these
+   *  outside its change store until a save. The manager calls this before every decision
+   *  that reads dirty: closeTab, save, saveAs, confirmCloseAll. Never from the poll. */
+  commitPendingEdits(): void;
   destroy(): void;
 }
 ```
@@ -576,6 +580,16 @@ async exportBytes(): Promise<ExportResult> {
   return { mode: structural || merged ? 'rewrite' : 'append', bytes: captured };
 }
 ```
+
+**Revised by chip 7 (2026-09-20), ratified.** The annotation half of `hasChanges()` is now
+`annotationsChanged(app)`. It keeps the two tests above as its first gates, then counts an
+entry as a change unless it is a **proven no-op measured against the loaded file**: a
+`{ value }` entry equal to the file's own value for that widget, or an untouched editor of
+an existing annotation that serialises to nothing. The pure rule lives in
+`src/viewer/effectiveChange.ts`. The full rule, its three "rule not applied" guards and the
+proof that no real edit can be hidden are in `BUILD-NOTES.md`, decision 10. That text is
+authoritative over the code block above. A false clean loses work and a false dirty only
+nags, so anything unproven counts as a change.
 
 **Dirty signal.** Poll `hasChanges()` every 1000 ms while the tab is visible, and once when
 it is hidden. Emit `dirtychange` only when the value flips. Clear the timer in `destroy`.
