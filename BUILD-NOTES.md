@@ -29,6 +29,12 @@ succeeded on 2026-09-19 in 3 min 10 s of Rust compile. It made
 (about 7.1 MB). The NSIS tools were already present: nothing was downloaded. The builder
 did not run the installer. U6 is the user's.
 
+**Installer rebuild (chip 9, the last one).** Built again on 2026-09-21 after the final
+code commit, in 2 min 13 s of Rust compile, 2 min 24 s for the whole command. Same path,
+`src-tauri\target\release\bundle\nsis\PDFluffer_0.1.0_x64-setup.exe`, now 7,646,813 bytes
+(about 7.3 MB). It is the one F1 in `docs/user-checks-final.md` asks the user to run. The
+builder did not run it.
+
 **`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
 and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
 output. Another `pdfluffer.exe` dev instance was already running (started 19:14 by a
