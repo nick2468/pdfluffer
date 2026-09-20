@@ -262,7 +262,8 @@ button:focus-visible, .tab:focus-visible {
   color: var(--muted);
 }
 
-.recent-item { padding-left: 26px; }
+.recent-item,
+.nested-item { padding-left: 26px; }
 
 .menu-empty {
   padding: 4px 14px 6px 26px;

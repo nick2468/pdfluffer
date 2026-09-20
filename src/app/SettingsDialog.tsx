@@ -1,4 +1,4 @@
-// Spec 11.5, the Settings dialog. The keepBackup checkbox is phase 2 and stays hidden.
+// Spec 11.5, the Settings dialog. Two checkboxes: reopen files at start, and keep a backup.
 
 import { useEffect, useRef } from "react";
 import { useServices, useSession } from "./services";
@@ -32,6 +32,14 @@ export default function SettingsDialog({ open, onClose }: { open: boolean; onClo
             onChange={(e) => manager.updateSettings({ restoreSession: e.target.checked })}
           />
           Reopen my files when PDFluffer starts
+        </label>
+        <label className="setting">
+          <input
+            type="checkbox"
+            checked={settings.keepBackup}
+            onChange={(e) => manager.updateSettings({ keepBackup: e.target.checked })}
+          />
+          Keep a backup of the original the first time I overwrite it
         </label>
         <div className="dialog-buttons">
           <button type="button" className="primary" onClick={onClose}>Close</button>

@@ -1,14 +1,19 @@
 // The objects main.tsx creates once, outside React, and the one hook that reads the manager.
 
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
+import type { EngineRegistry } from "../engine/engineRegistry";
 import type { FileAdapter } from "../files/FileAdapter";
 import type { SessionManager, SessionSnapshot } from "../session/SessionManager";
+import type { ToolRegistry } from "../tools/toolRegistry";
 import type { DialogService } from "./dialogService";
 
 export interface Services {
   files: FileAdapter;
   dialogs: DialogService;
   manager: SessionManager;
+  /** Phase 2. The menu asks the tool registry which tools these engines can serve. */
+  engines: EngineRegistry;
+  tools: ToolRegistry;
 }
 
 export const ServicesContext = createContext<Services | null>(null);

@@ -1,8 +1,8 @@
 // Spec 11.3, the app menu. A button with a popup list. Escape, a click outside, a click into
-// the viewer, or choosing an item closes it. Recent is a nested list, not a hover submenu.
-// The Document submenu and Revert to saved are phase 2 and left out.
+// the viewer, or choosing an item closes it. Recent and Document are nested lists, not hover
+// submenus.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { version as appVersion } from "../../package.json";
 import { aboutDialog, BUTTON, CLEAR_HISTORY_DIALOG, type DialogText } from "../session/dialogTexts";
 import type { TabSnapshot } from "../session/DocumentSession";
@@ -11,8 +11,10 @@ import { useServices, useSession } from "./services";
 const PDFJS_VERSION = "6.3.289";
 
 export default function AppMenu({ active, onSettings }: { active: TabSnapshot | undefined; onSettings: () => void }) {
-  const { manager, dialogs, files } = useServices();
+  const { manager, dialogs, files, engines, tools } = useServices();
   const { recent } = useSession(manager);
+  // Spec 13.2: only the tools some engine can serve. The registries never change.
+  const documentTools = useMemo(() => tools.available(engines), [tools, engines]);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -89,6 +91,21 @@ export default function AppMenu({ active, onSettings }: { active: TabSnapshot | 
           <Item label="Save As..." keys="Ctrl+Shift+S" disabled={!ready} onClick={run(() => active && manager.saveAs(active.id))} />
           <Item label="Print..." keys="Ctrl+P" disabled={!ready} onClick={run(() => active && manager.print(active.id))} />
           <Item label="Close tab" keys="Ctrl+W" disabled={!active} onClick={run(() => active && manager.closeTab(active.id))} />
+          <hr />
+          <div className="menu-heading" role="presentation">Document</div>
+          {documentTools.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              role="menuitem"
+              className="menu-item nested-item"
+              disabled={!ready}
+              onClick={run(() => active && tool.run({ tabId: active.id, session: manager, files, dialogs }))}
+            >
+              <span className="menu-label">{tool.label}</span>
+            </button>
+          ))}
+          <Item label="Revert to saved" disabled={!ready || !active?.dirty} onClick={run(() => active && manager.revert(active.id))} />
           <hr />
           <Item label="Settings..." onClick={run(onSettings)} />
           <Item label="Clear history..." onClick={run(clearHistory)} />
