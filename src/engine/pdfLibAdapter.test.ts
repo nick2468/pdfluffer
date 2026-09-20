@@ -1,6 +1,6 @@
 import {
-  decodePDFRawStream, degrees, PDFArray, PDFDocument, PDFRawStream, PDFStream, StandardFonts,
-  toDegrees,
+  decodePDFRawStream, degrees, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, PDFStream,
+  StandardFonts, toDegrees,
 } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
 import { EngineError, type EngineOp } from "./EngineAdapter";
@@ -215,5 +215,84 @@ describe("PdfLibAdapter flatten: form fields", () => {
 
   it("reports an encrypted file as encrypted", async () => {
     expect(await codeOf(engine.run({ kind: 'flatten' }, await encryptedPdf()))).toBe("encrypted");
+  });
+});
+
+// Plan P2.6
+
+/** The /Annots subtypes of one page, in order. */
+async function annotSubtypes(bytes: Uint8Array, index = 0): Promise<string[]> {
+  const doc = await PDFDocument.load(bytes);
+  const annots = doc.getPages()[index].node.Annots();
+  if (!annots) return [];
+  return annots.asArray().map((entry) => {
+    const annot = doc.context.lookup(entry);
+    if (!(annot instanceof PDFDict)) return "?";
+    const subtype = doc.context.lookup(annot.get(PDFName.of("Subtype")));
+    return subtype instanceof PDFName ? subtype.decodeText() : "?";
+  });
+}
+
+/**
+ * One page carrying a form field, a Stamp and a FreeText with real appearance streams, a
+ * Link that also has one, and a Stamp with no appearance at all.
+ */
+async function pdfWithAnnotations(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([300, 300]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const who = doc.getForm().createTextField("who");
+  who.setText("Nick");
+  who.addToPage(page, { x: 20, y: 250, width: 200, height: 20, font });
+
+  // A 10 by 10 form XObject: a filled blue square.
+  const appearance = doc.context.register(doc.context.flateStream("0 0 1 rg 0 0 10 10 re f", {
+    Type: "XObject", Subtype: "Form", BBox: [0, 0, 10, 10],
+  }));
+  const annot = (subtype: string, rect: number[], withAppearance = true) =>
+    doc.context.register(doc.context.obj({
+      Type: "Annot", Subtype: subtype, Rect: rect,
+      ...(withAppearance ? { AP: { N: appearance } } : {}),
+    }));
+
+  page.node.addAnnot(annot("Stamp", [50, 50, 150, 150]));
+  page.node.addAnnot(annot("Link", [10, 10, 100, 30]));
+  page.node.addAnnot(annot("FreeText", [200, 200, 220, 240]));
+  page.node.addAnnot(annot("Stamp", [0, 0, 20, 20], false));
+  return doc.save();
+}
+
+describe("PdfLibAdapter flatten: annotations", () => {
+  it("draws the notes and stamps on the page and keeps the link", async () => {
+    const bytes = await pdfWithAnnotations();
+    expect(await annotSubtypes(bytes)).toEqual(["Widget", "Stamp", "Link", "FreeText", "Stamp"]);
+
+    const result = await engine.run({ kind: 'flatten' }, bytes);
+    expect(await fieldNames(result.bytes)).toEqual([]);
+    // The link stays, and so does the stamp that has no appearance to draw.
+    expect(await annotSubtypes(result.bytes)).toEqual(["Link", "Stamp"]);
+    expect(await contentOf(result.bytes)).toMatch(DRAWS_XOBJECT);
+  });
+
+  it("fits the appearance box into the annotation rectangle", async () => {
+    const result = await engine.run({ kind: 'flatten' }, await pdfWithAnnotations());
+    const content = await contentOf(result.bytes);
+    // The 10 by 10 box into Rect [50 50 150 150], and into Rect [200 200 220 240].
+    expect(content).toContain("10 0 0 10 50 50 cm");
+    expect(content).toContain("2 0 0 4 200 200 cm");
+  });
+
+  it("changes nothing the second time", async () => {
+    const once = await engine.run({ kind: 'flatten' }, await pdfWithAnnotations());
+    const twice = await engine.run({ kind: 'flatten' }, once.bytes);
+    expect(await annotSubtypes(twice.bytes)).toEqual(await annotSubtypes(once.bytes));
+    expect(await contentOf(twice.bytes)).toEqual(await contentOf(once.bytes));
+    expect(await fieldNames(twice.bytes)).toEqual([]);
+  });
+
+  it("passes a page with no annotations through", async () => {
+    const result = await engine.run({ kind: 'flatten' }, await pdfWithPages([[200, 200]]));
+    expect(await annotSubtypes(result.bytes)).toEqual([]);
+    expect(await contentOf(result.bytes)).not.toMatch(DRAWS_XOBJECT);
   });
 });
