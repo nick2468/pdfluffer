@@ -37,6 +37,32 @@ export const SIGNATURE_GUARD_DIALOG: DialogText = {
   buttons: [BUTTON.saveCopy, BUTTON.continue, BUTTON.cancel],
 };
 
+/**
+ * Spec 13.3 step 1, before an engine operation rewrites a signed file. Same wording as the
+ * save guard above, but "Save As a copy..." makes no sense before the change has happened.
+ */
+export const OPERATION_GUARD_DIALOG: DialogText = {
+  title: SIGNATURE_GUARD_DIALOG.title,
+  body: SIGNATURE_GUARD_DIALOG.body,
+  buttons: [BUTTON.continue, BUTTON.cancel],
+};
+
+export const CANNOT_CHANGE_TITLE = "Cannot change this PDF";
+
+/** Spec 13.3 step 3, the engine could not read the file. */
+export const ENCRYPTED_DIALOG: DialogText = {
+  title: CANNOT_CHANGE_TITLE,
+  body: "This PDF is password-protected. PDFluffer cannot run this operation on it yet.",
+  buttons: [BUTTON.ok],
+};
+
+/** Any other engine failure. The document is untouched, so the wording says so. */
+export const OPERATION_FAILED_DIALOG: DialogText = {
+  title: CANNOT_CHANGE_TITLE,
+  body: "PDFluffer could not apply that change. The document is unchanged.",
+  buttons: [BUTTON.ok],
+};
+
 /** Spec 12.5, closing a dirty tab. The spec gives no body. */
 export function closeDirtyDialog(name: string): DialogText {
   return {

@@ -2,11 +2,16 @@
 // through useSession(), built on useSyncExternalStore, so getSnapshot() must return the same
 // object until something changes.
 
+import { EngineError, type EngineOp } from "../engine/EngineAdapter";
+import type { EngineRegistry } from "../engine/engineRegistry";
 import { FileError, type FileAdapter, type FileRef } from "../files/FileAdapter";
 import { hasDigitalSignature } from "../util/hasDigitalSignature";
 import type { ShortcutName, Viewer } from "../viewer/Viewer";
 import { askToSave, confirmCloseAll, neighbourAfterClose } from "./closeFlow";
-import { BUTTON, externalLinkDialog, OPEN_ELSEWHERE_DIALOG, type DialogText, type Dialogs } from "./dialogTexts";
+import {
+  BUTTON, ENCRYPTED_DIALOG, externalLinkDialog, OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG,
+  OPERATION_GUARD_DIALOG, saveFailedDialog, type DialogText, type Dialogs,
+} from "./dialogTexts";
 import { DocumentSession, type TabSnapshot } from "./DocumentSession";
 import { messageOf, saveTab, saveTabAs, type SaveContext } from "./saveFlow";
 import {
@@ -28,6 +33,8 @@ export interface SessionSnapshot {
 export interface SessionManagerOptions {
   now?: () => string;
   newId?: () => string;
+  /** Phase 2. Without it `runOp` finds no adapter and changes nothing. */
+  engines?: EngineRegistry;
 }
 
 const APP_NAME = "PDFluffer";
@@ -51,6 +58,7 @@ export class SessionManager {
 
   private readonly now: () => string;
   private readonly newId: () => string;
+  private readonly engines: EngineRegistry | null;
 
   constructor(
     private readonly files: FileAdapter,
@@ -60,6 +68,7 @@ export class SessionManager {
   ) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.newId = options.newId ?? (() => crypto.randomUUID());
+    this.engines = options.engines ?? null;
     this.sessionSaver = createDebouncedSaver<SessionStateV1>(files, "session");
     this.historySaver = createDebouncedSaver<HistoryStateV1>(files, "history");
   }
@@ -294,6 +303,85 @@ export class SessionManager {
         this.publish();
       },
     };
+  }
+
+  // Running an engine operation (spec 13.3)
+
+  /**
+   * Runs one document operation over the tab's bytes. True when the document changed.
+   * Nothing reaches disk: the tab goes dirty and the user saves when they choose to.
+   * A user-level failure shows a dialog and returns false. It never rejects.
+   */
+  async runOp(tabId: string, op: EngineOp): Promise<boolean> {
+    const tab = this.find(tabId);
+    if (!tab || tab.status !== 'ready' || !tab.viewer) return false;
+
+    // Before any dialog: an operation no engine can run must not nag the user first.
+    const adapter = this.engines?.findAdapter(op.kind) ?? null;
+    if (!adapter) {
+      console.warn(`No engine can run ${op.kind}. The document is unchanged.`);
+      return false;
+    }
+
+    this.commitPendingEdits(tab);
+    if (tab.hasDigitalSignature && !tab.rewriteAcknowledged) {
+      const choice = await this.ask(OPERATION_GUARD_DIALOG);
+      if (choice !== BUTTON.continue.id || !this.has(tab)) return false;
+      tab.rewriteAcknowledged = true;
+    }
+
+    // Export first (spec 13.3 step 2), so form values the user typed are in the bytes the
+    // engine reads. Whatever comes back is held as a rewrite until a save puts it on disk.
+    const viewer = tab.viewer;
+    let exported;
+    try {
+      exported = await viewer.exportBytes();
+    } catch (err) {
+      await this.ask(saveFailedDialog(messageOf(err)));
+      return false;
+    }
+    if (!this.has(tab)) return false;
+    if (exported.mode !== 'none') {
+      tab.bytes = exported.bytes;
+      tab.unsavedMode = 'rewrite';
+      this.publish();
+    }
+
+    // The adapter gets a copy, so a failed run cannot leave the tab's own bytes changed.
+    let result;
+    try {
+      result = await adapter.run(op, (tab.bytes ?? new Uint8Array()).slice());
+    } catch (err) {
+      const encrypted = err instanceof EngineError && err.code === 'encrypted';
+      console.warn(`${adapter.name} could not run ${op.kind}:`, err);
+      await this.ask(encrypted ? ENCRYPTED_DIALOG : OPERATION_FAILED_DIALOG);
+      return false;
+    }
+    if (!this.has(tab)) return false;
+
+    tab.bytes = result.bytes;
+    tab.pendingEngineChanges = true;   // makes the tab dirty, and makes the next save a rewrite
+    tab.hasDigitalSignature = hasDigitalSignature(result.bytes);
+    this.publish();
+    await this.reload(tab, viewer);
+    return true;
+  }
+
+  /** Shows the changed bytes. The bytes are already the tab's, so a failure only loses the view. */
+  private async reload(tab: DocumentSession, viewer: Viewer): Promise<void> {
+    if (tab.viewer !== viewer || !tab.bytes) return;
+    try {
+      const info = await viewer.load(tab.bytes, tab.name, viewer.getViewState());
+      if (!this.has(tab) || tab.viewer !== viewer) return;
+      tab.isXfa = info.isXfa;
+      tab.viewerDirty = viewer.hasChanges();
+    } catch (err) {
+      if (!this.has(tab) || tab.viewer !== viewer) return;
+      tab.dropViewer();
+      tab.status = 'error';
+      tab.errorMessage = messageOf(err);
+    }
+    this.publish();
   }
 
   // Closing (spec 12.5), in closeFlow.ts

@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  EngineError, type Capability, type EngineAdapter, type EngineOp, type EngineResult,
+} from "../engine/EngineAdapter";
+import { EngineRegistry } from "../engine/engineRegistry";
 import { FileError, type FileRef } from "../files/FileAdapter";
 import { FakeFileAdapter } from "../files/fakeFileAdapter";
 import { FakeViewer } from "../viewer/fakeViewer";
 import type { ViewState } from "../viewer/Viewer";
 import {
-  closeDirtyDialog, externalLinkDialog, firstSaveDialog, LOCKED_DIALOG, OPEN_ELSEWHERE_DIALOG,
-  SAVE_FAILED_TITLE, SIGNATURE_GUARD_DIALOG, type DialogButton, type Dialogs,
+  closeDirtyDialog, ENCRYPTED_DIALOG, externalLinkDialog, firstSaveDialog, LOCKED_DIALOG,
+  OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG, OPERATION_GUARD_DIALOG, SAVE_FAILED_TITLE,
+  SIGNATURE_GUARD_DIALOG, type DialogButton, type Dialogs,
 } from "./dialogTexts";
 import { SessionManager } from "./SessionManager";
 import type { HistoryStateV1, SessionStateV1, SettingsV1 } from "./state";
@@ -52,7 +57,12 @@ let current: FakeDialogs | null = null;
 
 const last = <T>(items: T[]): T | undefined => items[items.length - 1];
 
-interface SetupOptions { host?: boolean; files?: [FileRef, Uint8Array?][]; viewer?: (v: FakeViewer) => void; }
+interface SetupOptions {
+  host?: boolean;
+  files?: [FileRef, Uint8Array?][];
+  viewer?: (v: FakeViewer) => void;
+  engines?: EngineRegistry;
+}
 
 function setup(options: SetupOptions = {}) {
   const files = new FakeFileAdapter();
@@ -72,6 +82,7 @@ function setup(options: SetupOptions = {}) {
   }, dialogs, {
     newId: () => `tab-${++ids}`,
     now: () => new Date(Date.UTC(2026, 8, 19) + 1000 * seconds++).toISOString(),
+    engines: options.engines,
   });
   if (options.host !== false) manager.setViewerHost(HOST);
 
@@ -974,6 +985,205 @@ describe("SessionManager pending editor work", () => {
     expect(await manager.saveAs(id)).toBe(true);
     expect(viewer.commitCount).toBe(1);
     expect(files.writes.map((w) => w.ref)).toEqual([B]);
+  });
+});
+
+// Spec 13.3: running an engine operation
+
+const ENGINE_BYTES = new TextEncoder().encode("%PDF-1.7 rotated by the engine");
+const ROTATE: EngineOp = { kind: "pages.rotate", pages: "all", degrees: 90 };
+
+/** Records what it was asked to do. It never looks at the bytes it is given. */
+class FakeEngine implements EngineAdapter {
+  readonly name = "fake";
+  readonly runs: { op: EngineOp; bytes: Uint8Array }[] = [];
+  result: EngineResult | Error = { bytes: ENGINE_BYTES, mode: "rewrite" };
+
+  capabilities(): ReadonlySet<Capability> {
+    return new Set<Capability>(["pages.rotate", "flatten"]);
+  }
+
+  async run(op: EngineOp, bytes: Uint8Array): Promise<EngineResult> {
+    this.runs.push({ op, bytes: bytes.slice() });
+    if (this.result instanceof Error) throw this.result;
+    return this.result;
+  }
+}
+
+describe("SessionManager runOp (spec 13.3)", () => {
+  /** One ready tab, one engine that can rotate and flatten, and no viewer changes yet. */
+  async function openWithEngine(files: [FileRef, Uint8Array?][] = [[A], [B]]) {
+    const engine = new FakeEngine();
+    const engines = new EngineRegistry();
+    engines.register(engine);
+    const env = setup({ files, engines });
+    await env.manager.start();
+    await env.manager.openRefs([A]);
+    return { ...env, engine, viewer: env.viewers[0], id: env.tab(0).id };
+  }
+
+  it("a successful operation marks the tab dirty and reloads the viewer once", async () => {
+    const { manager, engine, viewer, id, tab } = await openWithEngine();
+    viewer.viewState = { page: 3, scale: "page-width", rotation: 90 };
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+    expect(engine.runs.map((r) => r.op)).toEqual([ROTATE]);
+    expect(tab(0).dirty).toBe(true);
+    expect(viewer.loads).toHaveLength(2);
+    expect(viewer.loads[1]).toEqual({
+      bytes: ENGINE_BYTES, filename: "a.pdf", view: { page: 3, scale: "page-width", rotation: 90 },
+    });
+  });
+
+  it("the engine reads the bytes the tab holds", async () => {
+    const { manager, engine, id } = await openWithEngine();
+    await manager.runOp(id, ROTATE);
+    expect(engine.runs[0].bytes).toEqual(PLAIN);
+  });
+
+  it("saving afterwards writes the engine's bytes as a rewrite and clears the flag", async () => {
+    const { manager, files, dialogs, viewer, id, tab } = await openWithEngine();
+    await manager.runOp(id, ROTATE);
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(files.writes).toEqual([{ ref: A, bytes: ENGINE_BYTES, options: { keepBackup: false } }]);
+    expect(tab(0).dirty).toBe(false);
+    // A rewrite reloads the viewer after the write. An append would not.
+    expect(viewer.loads).toHaveLength(3);
+    expect(viewer.loads[2].bytes).toEqual(ENGINE_BYTES);
+
+    // The flag is gone, so a second save has nothing to write.
+    expect(await manager.save(id)).toBe(true);
+    expect(files.writes).toHaveLength(1);
+  });
+
+  it("commits and exports pending form edits into the bytes the engine receives", async () => {
+    const { manager, engine, viewer, id } = await openWithEngine();
+    viewer.pendingEdit = true;
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+    expect(viewer.commitCount).toBe(1);
+    expect(engine.runs[0].bytes).toEqual(APPENDED);
+  });
+
+  it("asks before changing a signed file, and Cancel runs nothing", async () => {
+    const { manager, dialogs, engine, viewer, id, tab } = await openWithEngine([[A, SIGNED]]);
+    dialogs.answer("cancel");
+    expect(await manager.runOp(id, ROTATE)).toBe(false);
+    expect(dialogs.asked).toEqual([asked(OPERATION_GUARD_DIALOG)]);
+    expect(engine.runs).toEqual([]);
+    expect(tab(0).dirty).toBe(false);
+    expect(viewer.loads).toHaveLength(1);
+  });
+
+  it("Continue anyway runs the operation, and the later save does not ask again", async () => {
+    const { manager, files, dialogs, engine, id } = await openWithEngine([[A, SIGNED]]);
+    dialogs.answer("continue");
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+    expect(dialogs.asked).toEqual([asked(OPERATION_GUARD_DIALOG)]);
+    expect(engine.runs).toHaveLength(1);
+
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(dialogs.asked.map((a) => a.title)).toEqual([
+      OPERATION_GUARD_DIALOG.title, firstSaveDialog("a.pdf").title,
+    ]);
+    expect(files.writes.map((w) => w.bytes)).toEqual([ENGINE_BYTES]);
+  });
+
+  it("an unsigned file is never guarded", async () => {
+    const { manager, dialogs, id } = await openWithEngine();
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+    expect(dialogs.asked).toEqual([]);
+  });
+
+  it("an encrypted file shows its own dialog and leaves the bytes alone", async () => {
+    const { manager, files, dialogs, engine, viewer, id, tab } = await openWithEngine();
+    viewer.setDirty(true);
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    engine.result = new EngineError("encrypted", "password-protected");
+    dialogs.answer("ok");
+    expect(await manager.runOp(id, ROTATE)).toBe(false);
+    expect(dialogs.asked).toEqual([asked(ENCRYPTED_DIALOG)]);
+    expect(viewer.loads).toHaveLength(1);
+    expect(tab(0).dirty).toBe(true);
+
+    // The tab still holds exactly the bytes the engine was handed.
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(files.writes.map((w) => w.bytes)).toEqual([engine.runs[0].bytes]);
+  });
+
+  it("any other engine failure shows the general dialog and leaves the bytes alone", async () => {
+    const { manager, files, dialogs, engine, viewer, id } = await openWithEngine();
+    viewer.setDirty(true);
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    engine.result = new EngineError("failed", "page 9 is not in this document");
+    dialogs.answer("ok");
+    expect(await manager.runOp(id, ROTATE)).toBe(false);
+    expect(dialogs.asked).toEqual([asked(OPERATION_FAILED_DIALOG)]);
+
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(files.writes.map((w) => w.bytes)).toEqual([engine.runs[0].bytes]);
+  });
+
+  it("a failing export shows the save error and runs nothing", async () => {
+    const { manager, dialogs, engine, viewer, id } = await openWithEngine();
+    viewer.nextExport = new Error("Export broke");
+    dialogs.answer("ok");
+    expect(await manager.runOp(id, ROTATE)).toBe(false);
+    expect(dialogs.asked).toEqual([{ title: SAVE_FAILED_TITLE, body: "Export broke", buttons: ["ok"] }]);
+    expect(engine.runs).toEqual([]);
+  });
+
+  it("a capability no adapter has returns false and asks nothing", async () => {
+    const { manager, dialogs, engine, id, tab } = await openWithEngine();
+    const insert: EngineOp = { kind: "pages.insertPdf", other: PLAIN };
+    expect(await manager.runOp(id, insert)).toBe(false);
+    expect(engine.runs).toEqual([]);
+    expect(dialogs.asked).toEqual([]);
+    expect(tab(0).dirty).toBe(false);
+  });
+
+  it("a manager with no engine registry returns false", async () => {
+    const { manager, tab } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    expect(await manager.runOp(tab(0).id, ROTATE)).toBe(false);
+    expect(tab(0).dirty).toBe(false);
+  });
+
+  it("a tab that is not ready returns false", async () => {
+    const engines = new EngineRegistry();
+    engines.register(new FakeEngine());
+    const { manager, files, tab } = setup({ engines });
+    await files.saveState("session", savedSession([A, "C:\\gone\\x.pdf"], 0));
+    await manager.start();
+    expect(await manager.runOp(tab(1).id, ROTATE)).toBe(false);   // unloaded
+    await manager.activate(tab(1).id);
+    expect(tab(1).status).toBe("not-found");
+    expect(await manager.runOp(tab(1).id, ROTATE)).toBe(false);
+    expect(await manager.runOp("no-such-tab", ROTATE)).toBe(false);
+  });
+
+  it("a reload that fails leaves the tab in error, with the change still held", async () => {
+    const { manager, viewer, id, tab } = await openWithEngine();
+    viewer.loadError = "Broken PDF";
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+    expect(tab(0)).toMatchObject({ status: "error", errorMessage: "Broken PDF", dirty: true });
+  });
+
+  it("closing a tab changed by an operation asks Save, Discard, Cancel", async () => {
+    const { manager, dialogs, id, snap } = await openWithEngine();
+    await manager.runOp(id, ROTATE);
+    dialogs.answer("cancel");
+    expect(await manager.closeTab(id)).toBe(false);
+    expect(dialogs.asked).toEqual([asked(closeDirtyDialog("a.pdf"))]);
+    expect(snap().tabs).toHaveLength(1);
+
+    dialogs.answer("discard");
+    expect(await manager.closeTab(id)).toBe(true);
+    expect(snap().tabs).toEqual([]);
   });
 });
 
