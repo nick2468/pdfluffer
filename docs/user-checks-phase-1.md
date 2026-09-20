@@ -201,3 +201,22 @@ prompt appears. Start the app again: the tab returns, and the field does not hol
 discarded change. **If not,** report the prompt's exact words.
 
 Also try step 2 with **Cancel**. The window must stay open with the change still there.
+
+## U13 - an unfinished text box is not lost
+
+Added by chip 7 on 2026-09-20 (`BUILD-NOTES.md` decision 11). PDF.js holds a text box that
+is still being typed outside its change store, so the tab shows no orange dot yet. PDFluffer
+now commits that work before it acts on a close or a save.
+
+1. Start the dev app and open `three-pages.pdf` from the test folder.
+2. Choose PDF.js's text tool, click the page and type `Check thirteen`. Do not click away.
+   The tab shows no dot. That is expected.
+3. Press Ctrl+W.
+
+**Expected:** "Save changes to three-pages.pdf?" appears. Choose Cancel: the tab stays open,
+your text is on the page, and the tab now shows the dot. **If not,** and the tab closed with
+no dialog, report it: that loses the text.
+
+4. Repeat steps 2 and 3 with the draw tool: draw one stroke and press Ctrl+W without
+   clicking anywhere else. The same dialog must appear.
+5. Press Ctrl+W again and choose Discard, then close the app.

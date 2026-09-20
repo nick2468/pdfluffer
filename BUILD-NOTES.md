@@ -304,6 +304,34 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     `annotationEditorMode` setter calls `cleanup()` on a change to or from mode 0, and the
     checks changed modes while pages rendered. Not investigated further.
 
+11. **Every decision that reads `dirty` commits the open editor first** (chip 7 question 1,
+    ruled option A on 2026-09-20). PDF.js keeps a text box that is still being typed, and an
+    ink drawing that is still in progress, outside its change store. It commits both only
+    when it saves, in `endCurrentEditing()` (`viewer.mjs:19649`). So a tab could look clean
+    while holding work, and Ctrl+W closed it without a word.
+
+    `Viewer` gains `commitPendingEdits(): void` (deviation 18). `PdfJsViewer` calls PDF.js's
+    `endCurrentEditing()`, and swallows a failure with a warning. `SessionManager` calls it,
+    then refreshes `viewerDirty` from `hasChanges()`, before every decision that reads
+    `dirty`: `closeTab`, `save`, `saveAs`, and each tab in `confirmCloseAll`. The dirty poll
+    must never call it: committing every second would end an ink drawing after each stroke.
+
+    The dot still shows clean while the user types, which is right. Nothing can be lost by a
+    close or a save, which is what matters. Five tests cover it, and each one fails if the
+    call is removed.
+
+    **Builder checked in the harness**, 2026-09-20, with real typing and Ctrl+W:
+    - `three-pages.pdf`, text tool, typed "Lost text" without committing. The storage was
+      empty and the tab clean, as before. Ctrl+W now asked "Save changes to three-pages.pdf?".
+      Cancel kept the tab, with the text committed as a `FreeTextEditor` holding "Lost text".
+      Before this change the same steps closed the tab with no dialog and lost the text.
+    - Same file, ink tool, one stroke, not committed. Ctrl+W asked, and the stroke was in the
+      storage as an `InkEditor`.
+    - `flat-form.pdf`, text tool, typed "Pending text", Ctrl+W, chose Save and Overwrite. The
+      text was written to the file and the tab went clean.
+    - The case 1 file (the render-written radio entries, clean) still closed on Ctrl+W with
+      no dialog. Committing does not make a quiet tab dirty.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -451,30 +479,16 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     applies the rule in decision 10. Chip 7 ordered the change. Spec 9.5 needs the new
     text. `exportBytes` is unchanged apart from dropping the baseline before it saves.
 
+18. **`Viewer` gains `commitPendingEdits()`** (chip 7, decision 11). Spec 8.3 does not list
+    it. It takes nothing, returns nothing, and is safe to call on any viewer at any time.
+    `FakeViewer` implements it with a `pendingEdit` flag, so a test can hold work outside
+    `hasChanges()` the way PDF.js does.
+
 ## Questions for the user
 
 For the orchestrator.
 
-1. **Work in an unfinished editor shows clean, and Ctrl+W loses it** (found by chip 7,
-   known issue 5). This is older than chip 7: the code before it gives the same result.
-   PDF.js adds a new text box to its storage only when the text box is committed, and an
-   ink drawing only when the drawing session ends. Until then the modified flag stays
-   false and the storage has no entry, so `hasChanges()` is false.
-   Builder checked in the harness: on `three-pages.pdf`, chose the text tool, clicked the
-   page and typed "Pending". The storage was empty, the UI manager's active editor was the
-   `FreeTextEditor`, and the tab was clean. Ctrl+W closed the tab with no dialog, and the
-   text was gone. One ink stroke in ink mode behaves the same: drawn, not in the storage,
-   tab clean. PDF.js's own save commits both first (`endCurrentEditing`, decision 10).
-   A fix is a design choice, so I did not make one. Two options:
-   - **A (recommended).** Add `commitPendingEdits()` to the `Viewer` interface.
-     `PdfJsViewer` calls PDF.js's `endCurrentEditing()`. The session calls it before every
-     decision that reads dirtiness: close tab, close window, save. The dot still shows
-     clean while typing, but no close or save can lose the text. Session and interface
-     change, plus tests.
-   - **B.** Count an active editor, or ink mode, as dirty. Smaller, but the dot shows while
-     a text box is merely selected for editing or the ink tool is merely open.
-   The poll must not commit: committing every second would end each ink session after one
-   stroke.
+None open.
 
 ## Known issues
 
@@ -520,4 +534,6 @@ For the orchestrator.
      XFA.
 
 5. **Work in an unfinished text box or ink drawing is not seen as a change.** Older than
-   chip 7. Ctrl+W then closes the tab without asking and the work is lost. See question 1.
+   chip 7. Ctrl+W then closed the tab without asking and the work was lost. **Fixed on
+   2026-09-20** by decision 11: every close and save commits the open editor first. The
+   tab still shows clean while the user types, by design.
