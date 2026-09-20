@@ -912,6 +912,71 @@ describe("SessionManager close (spec 12.5)", () => {
 
 // Shortcuts, links, settings, the XFA banner
 
+// Chip 7 question 1, ruled option A on 2026-09-20. PDF.js holds a text box that is still
+// being typed, and a drawing in progress, outside its change store. Every decision that
+// reads dirty must commit that work first, or a close or a save silently loses it.
+
+describe("SessionManager pending editor work", () => {
+  /** One open tab whose viewer looks clean but holds uncommitted work. */
+  async function openPending() {
+    const env = setup();
+    await env.manager.start();
+    await env.manager.openRefs([A]);
+    const viewer = env.viewers[0];
+    viewer.pendingEdit = true;
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    return { ...env, viewer, id: env.tab(0).id };
+  }
+
+  it("closing a tab commits first, so the work is not lost without a word", async () => {
+    const { manager, dialogs, viewer, id, tab, snap } = await openPending();
+    expect(tab(0).dirty).toBe(false);
+    dialogs.answer("cancel");
+    expect(await manager.closeTab(id)).toBe(false);
+    expect(dialogs.asked).toEqual([asked(closeDirtyDialog("a.pdf"))]);
+    expect(viewer.commitCount).toBe(1);
+    expect(snap().tabs).toHaveLength(1);
+    expect(tab(0).dirty).toBe(true);
+  });
+
+  it("a clean tab still closes without a dialog", async () => {
+    const { manager, viewers, snap } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    expect(await manager.closeTab(snap().tabs[0].id)).toBe(true);
+    expect(viewers[0].commitCount).toBe(1);
+    expect(snap().tabs).toEqual([]);
+  });
+
+  it("closing the window commits every tab, not only the ones already dirty", async () => {
+    const { manager, dialogs, viewers } = setup();
+    await manager.start();
+    for (const ref of [A, B, C]) await manager.openRefs([ref]);
+    viewers[2].pendingEdit = true;
+    dialogs.answer("discard");
+    expect(await manager.confirmCloseAll()).toBe(true);
+    expect(dialogs.asked.map((a) => a.title)).toEqual(["Save changes to c.pdf?"]);
+    expect(viewers.map((v) => v.commitCount)).toEqual([1, 1, 1]);
+  });
+
+  it("saving commits first, so the open text box reaches the file", async () => {
+    const { manager, files, dialogs, viewer, id, tab } = await openPending();
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    expect(viewer.commitCount).toBe(1);
+    expect(files.writes).toEqual([{ ref: A, bytes: APPENDED, options: { keepBackup: false } }]);
+    expect(tab(0).dirty).toBe(false);
+  });
+
+  it("Save As commits first too", async () => {
+    const { manager, files, viewer, id } = await openPending();
+    files.queueSaveTarget(B);
+    expect(await manager.saveAs(id)).toBe(true);
+    expect(viewer.commitCount).toBe(1);
+    expect(files.writes.map((w) => w.ref)).toEqual([B]);
+  });
+});
+
 describe("SessionManager shortcuts (spec 11.6)", () => {
   it("nextTab and prevTab wrap around", async () => {
     const { manager, active } = setup();

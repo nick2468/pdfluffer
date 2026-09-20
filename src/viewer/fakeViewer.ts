@@ -12,6 +12,9 @@ export class FakeViewer implements Viewer {
   destroyed = false;
   focusCount = 0;
   printCount = 0;
+  commitCount = 0;
+  /** Work held outside hasChanges(), as PDF.js holds a text box that is still being typed. */
+  pendingEdit = false;
   readonly loads: FakeLoad[] = [];
 
   docInfo: DocInfo = { pageCount: 1, isXfa: false };
@@ -47,6 +50,13 @@ export class FakeViewer implements Viewer {
     this.loads.push({ bytes: bytes.slice(), filename, view });
     if (this.loadError !== null) throw new Error(this.loadError);
     return { ...this.docInfo };
+  }
+
+  commitPendingEdits(): void {
+    this.commitCount++;
+    if (!this.pendingEdit) return;
+    this.pendingEdit = false;
+    this.setDirty(true);
   }
 
   hasChanges(): boolean {

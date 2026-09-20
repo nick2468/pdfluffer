@@ -251,12 +251,31 @@ export class SessionManager {
 
   async save(tabId: string): Promise<boolean> {
     const tab = this.find(tabId);
-    return tab ? saveTab(this.saveContext(), tab) : false;
+    if (!tab) return false;
+    this.commitPendingEdits(tab);
+    return saveTab(this.saveContext(), tab);
   }
 
   async saveAs(tabId: string): Promise<boolean> {
     const tab = this.find(tabId);
-    return tab ? saveTabAs(this.saveContext(), tab) : false;
+    if (!tab) return false;
+    this.commitPendingEdits(tab);
+    return saveTabAs(this.saveContext(), tab);
+  }
+
+  /**
+   * Spec 8.3. The viewer holds an open text box or drawing outside its change store, so
+   * every decision that reads `dirty` commits first. Losing that work is worse than a
+   * dialog the user did not expect.
+   */
+  private commitPendingEdits(tab: DocumentSession): void {
+    const viewer = tab.viewer;
+    if (!viewer || tab.status !== 'ready') return;
+    viewer.commitPendingEdits();
+    const dirty = viewer.hasChanges();
+    if (dirty === tab.viewerDirty) return;
+    tab.viewerDirty = dirty;
+    this.publish();
   }
 
   private saveContext(): SaveContext {
@@ -282,6 +301,7 @@ export class SessionManager {
   async closeTab(tabId: string): Promise<boolean> {
     const tab = this.find(tabId);
     if (!tab) return true;
+    this.commitPendingEdits(tab);
     if (tab.dirty && !(await this.askToSave(tab))) return false;
     if (!this.has(tab)) return true;
 
@@ -303,6 +323,7 @@ export class SessionManager {
     const ok = await confirmCloseAll({
       tabs: () => this.tabs,
       has: (tab) => this.has(tab),
+      commitPendingEdits: (tab) => this.commitPendingEdits(tab),
       activate: (tab) => this.activate(tab.id),
       askToSave: (tab) => this.askToSave(tab),
       flush: async () => {

@@ -21,6 +21,8 @@ export function neighbourAfterClose<T>(remaining: T[], index: number): T | undef
 export interface CloseAllContext {
   tabs(): DocumentSession[];
   has(tab: DocumentSession): boolean;
+  /** Flushes editor work into the viewer's change store, so `dirty` below is complete. */
+  commitPendingEdits(tab: DocumentSession): void;
   activate(tab: DocumentSession): Promise<void>;
   askToSave(tab: DocumentSession): Promise<boolean>;
   /** Writes session and history at once. */
@@ -30,7 +32,9 @@ export interface CloseAllContext {
 /** For each dirty tab in order: activate it and ask. The first Cancel keeps the window open. */
 export async function confirmCloseAll(ctx: CloseAllContext): Promise<boolean> {
   for (const tab of [...ctx.tabs()]) {
-    if (!ctx.has(tab) || !tab.dirty) continue;
+    if (!ctx.has(tab)) continue;
+    ctx.commitPendingEdits(tab);
+    if (!tab.dirty) continue;
     await ctx.activate(tab);
     if (!(await ctx.askToSave(tab))) return false;
   }

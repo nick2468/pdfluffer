@@ -44,6 +44,7 @@ interface PdfJsEditor {
 interface PdfJsEditorUIManager {
   getActive(): unknown;
   getMode(): number;
+  endCurrentEditing(): void;
 }
 
 interface PdfJsPageViewer {
@@ -257,6 +258,22 @@ export class PdfJsViewer implements Viewer {
     if (this.app === app && app.pdfDocument === doc) this.baseline = baseline;
     this.pollDirty();
     return { pageCount: app.pagesCount, isXfa: app.pdfDocument?.isPureXfa === true };
+  }
+
+  /**
+   * Spec 8.3. PDF.js keeps a text box that is still being typed, and an ink drawing that is
+   * still in progress, outside its change store. It commits both only when it saves
+   * (`downloadOrSave` calls `endCurrentEditing`). This calls the same step, so a close or a
+   * save decision sees that work.
+   */
+  commitPendingEdits(): void {
+    const ui = this.app?.pdfViewer._layerProperties?.annotationEditorUIManager;
+    if (!ui) return;
+    try {
+      ui.endCurrentEditing();
+    } catch (err) {
+      console.warn('Could not commit the open editor:', err);
+    }
   }
 
   hasChanges(): boolean {
