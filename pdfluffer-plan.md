@@ -52,8 +52,8 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P2.4 `pdfLibAdapter`: rotate, with tests
 - [x] P2.5 `pdfLibAdapter`: flatten form fields, with tests
 - [x] P2.6 `pdfLibAdapter`: flatten annotations, with tests. Apply the stop rule if needed (spec 13.4)
-- [ ] P2.7 The four tools and the Document submenu (spec 13.5)
-- [ ] P2.8 Revert to saved. The backup setting, end to end (spec 13.6)
-- [ ] P2.9 Harness check H11 passes. `npm run check` passes. Commit
+- [x] P2.7 The four tools and the Document submenu (spec 13.5)
+- [x] P2.8 Revert to saved. The backup setting, end to end (spec 13.6)
+- [x] P2.9 Harness check H11 passes. `npm run check` passes. Commit
 - [ ] P2.10 **USER** A flattened, signed form looks right in Acrobat, Chrome and Edge
 - [ ] P2.11 Phase 2 acceptance criteria met (spec 17)

@@ -205,7 +205,7 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
    `confirmCloseAll()` is about to return true, `SessionManager` first calls `dropViewer()`
    on every tab, after the savers flush. Removing an iframe does not raise the prompt. Two
    tests cover it: a `true` result leaves every `FakeViewer` destroyed, a `false` result
-   destroys none. U12 in `docs/user-checks-phase-1.md` checks it in the real window.
+   destroys none. F5 in `docs/user-checks-final.md` checks it in the real window.
 
 9. **Chip 5's `SessionManager.print` (deviation 13) and small choices (deviation 14) are
    ratified** (chip 6, ruling 2).
@@ -360,6 +360,54 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
 
     Still outstanding by design: H11 needs the Document submenu (chip 9), and U2 and U10
     style rendering in Acrobat, Chrome and Edge is plan item **P2.10, a USER check**.
+
+13. **Harness check H11 and the phase 2 regressions** (chip 9, plan P2.9). Run by the
+    builder on 2026-09-21 in the browser pane, against `npm run dev`. All nine passed.
+
+    | # | Check | Result |
+    |---|---|---|
+    | 1 | Insert `form-basic.pdf` into `three-pages.pdf` | 3 pages became 4, the tab went dirty |
+    | 2 | Rotate all right, then rotate page 2 right | 0,0,0,0 to 90,90,90,90, then page 2 alone to 180 |
+    | 3 | Flatten a filled field, a text note and a placed signature | All three stayed in place and at size. No fields, no annotations, no editors left in the DOM |
+    | 4 | Save after an operation, then reload the page | The saved file came back with 4 pages and 90,180,90,90 |
+    | 5 | Revert after an operation | Rotate all left, then Revert, and the saved state came back. Tab clean |
+    | 6 | An operation on `fake-signed.pdf` | The guard showed **Continue anyway** and **Cancel** only. Cancel left the file untouched |
+    | 7 | Cancel in the Flatten confirm | Nothing ran, the tab stayed clean |
+    | 8 | Regressions H1, H2, H5, H8, and chip 7's false dirty | All still pass, see below |
+    | 9 | pdf-lib is not fetched until the first operation | No request during start or load. One request, at the first operation |
+
+    The regressions in detail. **H1**: filling a field and ticking a box raised the dot
+    within a second. **H2**: the first save asked and Overwrite cleared the dot; a second
+    edit and save asked nothing. **H5**: three tabs, Ctrl+Tab and Ctrl+Shift+Tab cycled and
+    wrapped, Ctrl+W closed a clean tab with no dialog, and a dirty tab asked Save, Discard,
+    Cancel, with Cancel keeping it. **H8**: the Signed chip showed, and deleting page 3 in
+    PDF.js's own Pages sidebar then saving raised the guard, this time with all three
+    buttons, which is right: spec 12.4 offers Save As a copy at save time, and spec 13.3
+    leaves it out before an operation. **Chip 7**: reopening a form whose radio group has a
+    selected button left PDF.js's `_annotationStorageModified` true with two entries in its
+    storage, and the tab still read clean ten seconds later.
+
+    **The checks ran on port 1425, not 1420.** The browser pane's IndexedDB for
+    `http://localhost:1420` wedged part way through: `open` and `deleteDatabase` on the
+    `keyval-store` database both stopped settling, in a new tab and with no other page
+    holding it, while a freshly named database opened normally. That is a browser profile
+    fault, not an app one, and nothing in `src/` touches IndexedDB except
+    `browserFileAdapter`, which only the harness uses. A second Vite on 1425 is a different
+    origin with its own storage, and everything worked there. If the harness ever hangs at
+    a blank page again, the cause is worth remembering.
+
+14. **pdf-lib loads only when an operation runs** (chip 9). `pdfLibAdapter.ts` keeps its
+    top-level imports type-only and calls `import("@cantoo/pdf-lib")` inside `run`, caching
+    the promise. A failed load is not cached, so the next operation tries again. Strict
+    TypeScript took it without a fight: `typeof import(...)` gives the module's type, and
+    `instanceof pdf.PDFDict` still narrows, so the only change was threading the module
+    through the helpers.
+
+    Measured on the production build: the main bundle is 290 kB and pdf-lib is a chunk of
+    its own at 578 kB, which `index.html` does not preload. The pdf-lib error string
+    `Input document to` appears in the chunk and not in the main bundle. In the harness the
+    network panel showed no pdf-lib request during start or document load, and exactly one
+    at the first operation.
 
 ## Deviations
 
@@ -540,8 +588,46 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     - The bytes are copied twice: `runOp` copies before handing them to the adapter, so no
       adapter can change the tab's own array, and `pdfLibAdapter` copies again before
       `PDFDocument.load`, which keeps its input for an incremental save.
-    - Nothing registers `PdfLibAdapter` yet. Chip 9 wires it into `services.ts` with the
-      tools and the Document submenu.
+    - Nothing registered `PdfLibAdapter` in chip 8. Chip 9 registers it in `main.tsx`,
+      beside the tool registry, and passes the engines to the manager.
+
+22. **`DocumentSession` gains a `busy` flag** (chip 9, ordered by the chip). It is true
+    while `runOp` or `revert` is working on that tab. Both return early when it is set, so
+    a second operation cannot start on top of one that is still running and reloading the
+    viewer. It is per tab, so one busy tab never blocks another. The flag is not in the
+    snapshot: the menu closes as soon as an item is chosen, so nothing needs to grey out.
+
+23. **`revert` clears `rewriteAcknowledged`, and keeps `saveConfirmed`** (chip 9). Spec
+    13.6 names neither. Reverting undoes the change the user accepted the rewrite for, so
+    the guard has to come back if they make another one. Overwriting this file is a
+    separate decision the user has already made for the tab, and reverting is not a reason
+    to ask again.
+
+24. **`currentPage` falls back to the viewer's own view state** (chip 9). The chip says to
+    read the stored view state. That state only fills in when PDF.js first fires a view
+    event, so a file the user has not scrolled or zoomed yet would have none, and Rotate
+    this page would quietly do nothing. It now reads the stored state, then the viewer's
+    live one, and returns null only when the tab is not ready.
+
+25. **`FakeViewer.load` clears its changes** (chip 9). A real PDF.js load builds a new
+    annotation storage, which has no changes in it. The fake kept its dirty flag across a
+    load, which made a reverted tab look dirty in a test for a reason that could not happen
+    in the app. It does not emit `dirtychange`, because the manager reads `hasChanges()`
+    itself after every load.
+
+26. **Small choices chip 9 left open:**
+    - Spec 13.5's table names five tool ids in four rows, and all five are registered:
+      `insertPdf`, `rotateAllRight`, `rotateAllLeft`, `rotatePageRight`, `flatten`.
+    - `ToolContext.session` stays the whole `SessionManager`, as spec 13.2 says. The tools
+      only call `runOp` and `currentPage`, so their test stands a small object in its place
+      through one cast, in one helper.
+    - Insert PDF reads and inserts one file at a time, in the order chosen, and stops at
+      the first operation that returns false. A file it cannot read shows "Could not open"
+      with the error and stops there, so the rest of the list is not half applied.
+    - The Flatten and Revert dialogs reuse the `continue` and `cancel` button ids the chip
+      names, with their own labels, "Flatten" and "Revert", both `danger`. The same pattern
+      as the Clear history dialog.
+    - The Document items use a `nested-item` class that shares the Recent list's indent.
 
 ## Questions for the user
 
