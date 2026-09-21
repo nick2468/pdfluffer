@@ -86,10 +86,14 @@ export function saveFailedDialog(message: string): DialogText {
   return { title: SAVE_FAILED_TITLE, body: message, buttons: [BUTTON.ok] };
 }
 
-/** Spec 13.5, before Flatten bakes everything into the pages. */
+/**
+ * Spec 13.5, before Flatten bakes everything into the pages. The wording was rewritten on
+ * 2026-09-21: the first user did not know the word flatten, so the dialog explains it and
+ * the menu item keeps the name.
+ */
 export const FLATTEN_DIALOG: DialogText = {
   title: "Flatten this PDF?",
-  body: "Flatten bakes form values, signatures and notes into the pages. They can no longer be edited. You can still use Revert to saved until you save.",
+  body: "Flatten makes every filled-in answer, note and signature a permanent part of the page. Afterwards nobody can edit, move or remove them, including you. Use it before you send a signed form to someone. You can still use Revert to saved until you save.",
   buttons: [{ id: BUTTON.continue.id, label: "Flatten", kind: "danger" }, BUTTON.cancel],
 };
 
