@@ -10,6 +10,22 @@ export interface ViewState {
 
 export interface DocInfo { pageCount: number; isXfa: boolean; }
 
+/** Six numbers, PDF's order: a b c d e f. */
+export type Matrix = [number, number, number, number, number, number];
+
+/** One page drawn as a picture, for OCR (spec 20.4). */
+export interface PageImage {
+  bytes: Uint8Array;               // JPEG
+  width: number;                   // pixels
+  height: number;
+  /**
+   * PDF.js's viewport transform for this picture: PDF user space, in points, to picture
+   * pixels. It already holds the page's /Rotate, its crop box offset and the flip of the
+   * y axis, so a caller that inverts it never has to reason about page rotation.
+   */
+  transform: Matrix;
+}
+
 export type ExportResult =
   | { mode: 'none' }                              // the viewer has nothing new to save
   | { mode: 'append'; bytes: Uint8Array }         // incremental update
@@ -36,6 +52,13 @@ export interface Viewer {
   commitPendingEdits(): void;
   hasChanges(): boolean;
   exportBytes(): Promise<ExportResult>;
+  /**
+   * Spec 20.4. Draws one page, 1-based, at about 300 dpi, shrunk so its longer side fits
+   * inside maxDimension. For OCR only: the picture is read and thrown away.
+   */
+  renderPageImage(page: number, maxDimension: number): Promise<PageImage>;
+  /** Spec 20.4, O5. The page's real text, counted without spaces. */
+  pageTextLength(page: number): Promise<number>;
   getViewState(): ViewState;
   setVisible(visible: boolean): void;
   print(): void;

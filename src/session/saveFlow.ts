@@ -133,6 +133,7 @@ async function afterWrite(ctx: SaveContext, tab: DocumentSession, mode: SaveMode
     const info = await viewer.load(tab.bytes, tab.name, viewer.getViewState());
     if (!ctx.has(tab)) return;
     tab.isXfa = info.isXfa;
+    tab.pageCount = info.pageCount;
     tab.viewerDirty = viewer.hasChanges();
   } catch (err) {
     // The file is saved. Only the view failed, so the tab shows the error panel.

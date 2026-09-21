@@ -6,7 +6,7 @@ import { EngineError, type EngineAdapter, type EngineOp } from "../engine/Engine
 import type { EngineRegistry } from "../engine/engineRegistry";
 import { FileError, type FileAdapter, type FileRef } from "../files/FileAdapter";
 import { hasDigitalSignature } from "../util/hasDigitalSignature";
-import type { ShortcutName, Viewer } from "../viewer/Viewer";
+import type { PageImage, ShortcutName, Viewer } from "../viewer/Viewer";
 import { askToSave, confirmCloseAll, neighbourAfterClose } from "./closeFlow";
 import {
   BUTTON, ENCRYPTED_DIALOG, externalLinkDialog, OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG,
@@ -205,6 +205,7 @@ export class SessionManager {
       const info = await viewer.load(bytes, tab.name, viewFor(this.history, tab.ref, this.sameFile));
       if (!this.has(tab)) return;
       tab.isXfa = info.isXfa;
+      tab.pageCount = info.pageCount;
       tab.viewerDirty = viewer.hasChanges();
       tab.status = 'ready';
     } catch (err) {
@@ -320,6 +321,24 @@ export class SessionManager {
     return tab.view?.page ?? tab.viewer?.getViewState().page ?? null;
   }
 
+  // Reading pages for OCR (spec 20.4). Thin pass-throughs: the viewer does the PDF.js work.
+
+  /** The loaded document's page count, or null when the tab is not ready. */
+  pageCount(tabId: string): number | null {
+    const tab = this.find(tabId);
+    return tab && tab.status === 'ready' ? tab.pageCount : null;
+  }
+
+  /** One page, 1-based, as a picture for OCR. Rejects when the tab is not ready. */
+  async renderPageImage(tabId: string, page: number, maxDimension: number): Promise<PageImage> {
+    return this.readyViewer(tabId).renderPageImage(page, maxDimension);
+  }
+
+  /** The page's real text, counted without spaces. Rejects when the tab is not ready. */
+  async pageTextLength(tabId: string, page: number): Promise<number> {
+    return this.readyViewer(tabId).pageTextLength(page);
+  }
+
   /**
    * Runs one document operation over the tab's bytes. True when the document changed.
    * Nothing reaches disk: the tab goes dirty and the user saves when they choose to.
@@ -396,6 +415,7 @@ export class SessionManager {
       const info = await viewer.load(tab.bytes, tab.name, viewer.getViewState());
       if (!this.has(tab) || tab.viewer !== viewer) return;
       tab.isXfa = info.isXfa;
+      tab.pageCount = info.pageCount;
       tab.viewerDirty = viewer.hasChanges();
     } catch (err) {
       if (!this.has(tab) || tab.viewer !== viewer) return;
@@ -652,6 +672,13 @@ export class SessionManager {
   }
 
   private readonly sameFile = (a: FileRef, b: FileRef): boolean => this.files.sameFile(a, b);
+
+  /** The viewer of a ready tab, for the pass-throughs above. Throws, so they reject. */
+  private readyViewer(tabId: string): Viewer {
+    const tab = this.find(tabId);
+    if (!tab || tab.status !== 'ready' || !tab.viewer) throw new Error("That tab is not ready.");
+    return tab.viewer;
+  }
 
   private find(tabId: string | null): DocumentSession | undefined {
     return tabId === null ? undefined : this.tabs.find((t) => t.id === tabId);

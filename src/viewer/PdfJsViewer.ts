@@ -10,7 +10,7 @@ import {
   type FieldInfo,
 } from './effectiveChange';
 import { isReloadKey, shortcutFor } from './shortcutFor';
-import type { DocInfo, ExportResult, Viewer, ViewerEvents, ViewState } from './Viewer';
+import type { DocInfo, ExportResult, Matrix, PageImage, Viewer, ViewerEvents, ViewState } from './Viewer';
 import injectCss from './viewerInject.css?raw';
 
 // Only the PDF.js members this file uses. Checked against 6.3.289, see BUILD-NOTES.md.
@@ -29,8 +29,27 @@ interface PdfJsAnnotationStorage extends Iterable<[string, unknown]> {
 interface PdfJsDocument {
   annotationStorage: PdfJsAnnotationStorage;
   isPureXfa: boolean;
+  numPages: number;
   getFieldObjects(): Promise<unknown>;
   getMetadata(): Promise<{ info?: { IsXFAPresent?: unknown } }>;
+  getPage(pageNumber: number): Promise<PdfJsPage>;
+}
+
+interface PdfJsViewport {
+  width: number;
+  height: number;
+  transform: number[];
+}
+
+/** The page proxy the viewer itself uses. Never cleaned up here, or the viewer loses its cache. */
+interface PdfJsPage {
+  getViewport(params: { scale: number }): PdfJsViewport;
+  render(params: {
+    canvas: HTMLCanvasElement;
+    canvasContext: CanvasRenderingContext2D;
+    viewport: PdfJsViewport;
+  }): { promise: Promise<void> };
+  getTextContent(): Promise<{ items: { str?: unknown }[] }>;
 }
 
 /** Duck typed. An editor is a class instance from the iframe's realm. */
@@ -112,6 +131,11 @@ const VIEWER_URL = '/pdfjs/web/viewer.html';
 /** AnnotationEditorType.INK. The only mode with a drawing session (pdf.mjs `isDrawer`). */
 const INK_MODE = 15;
 const DIRTY_POLL_MS = 1000;
+/** Spec 20.4: OCR reads a page best at about 300 dpi. PDF user space is 72 points an inch. */
+const OCR_SCALE = 300 / 72;
+/** Spec 20.4: never a longer side than this, whatever the engine would accept. */
+const OCR_MAX_SIDE = 4000;
+const OCR_JPEG_QUALITY = 0.92;
 
 function applyOptions(options: PdfJsAppOptions): void {
   for (const [name, value] of OPTIONS) {
@@ -312,6 +336,57 @@ export class PdfJsViewer implements Viewer {
     return { mode: structural || merged ? 'rewrite' : 'append', bytes: captured };
   }
 
+  /**
+   * Spec 20.4. Draws the page on a canvas of the iframe's own document, then encodes it as a
+   * JPEG. The viewport uses the page's own /Rotate, so the picture is the page the way the
+   * user sees it, and its transform says how to get back to PDF points.
+   */
+  async renderPageImage(page: number, maxDimension: number): Promise<PageImage> {
+    const pdfPage = await this.requirePage(page);
+    const doc = this.iframe?.contentDocument;
+    if (!doc) throw new Error('The viewer is not mounted yet.');
+
+    const natural = pdfPage.getViewport({ scale: 1 });
+    const limit = Math.min(maxDimension, OCR_MAX_SIDE);
+    const longer = Math.max(natural.width, natural.height) * OCR_SCALE;
+    const scale = OCR_SCALE * Math.min(1, limit / longer);
+    const viewport = pdfPage.getViewport({ scale });
+
+    const canvas = doc.createElement('canvas');
+    // Rounded down, so the picture never passes the limit. The transform is not scaled with
+    // it: a strip under one pixel wide is simply left off the right and bottom edges.
+    canvas.width = Math.max(1, Math.floor(viewport.width));
+    canvas.height = Math.max(1, Math.floor(viewport.height));
+    try {
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('This page could not be drawn.');
+      // PDF.js paints the page white before it draws, so the JPEG has no black background.
+      await pdfPage.render({ canvas, canvasContext: context, viewport }).promise;
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', OCR_JPEG_QUALITY));
+      if (!blob) throw new Error('This page could not be turned into a picture.');
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const t = viewport.transform;
+      const transform: Matrix = [t[0], t[1], t[2], t[3], t[4], t[5]].map(Number) as Matrix;
+      return { bytes, width: canvas.width, height: canvas.height, transform };
+    } finally {
+      // A 300 dpi page holds tens of megabytes. Let it go now, not at the next collection.
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  }
+
+  /** Spec 20.4, O5. Sums the page's text items, counting no whitespace. */
+  async pageTextLength(page: number): Promise<number> {
+    const pdfPage = await this.requirePage(page);
+    const content = await pdfPage.getTextContent();
+    let length = 0;
+    for (const item of content.items) {
+      // A marked-content item has no str. Only real text counts.
+      if (typeof item.str === 'string') length += item.str.replace(/\s/g, '').length;
+    }
+    return length;
+  }
+
   getViewState(): ViewState {
     const pdfViewer = this.app?.pdfViewer;
     if (!pdfViewer) return { page: 1, scale: 'auto', rotation: 0 };
@@ -383,6 +458,16 @@ export class PdfJsViewer implements Viewer {
   private requireApp(): PdfJsApp {
     if (!this.app) throw new Error('The viewer is not mounted yet.');
     return this.app;
+  }
+
+  /** The loaded document's page, 1-based. Throws for a page that is not there. */
+  private async requirePage(page: number): Promise<PdfJsPage> {
+    const doc = this.requireApp().pdfDocument;
+    if (!doc) throw new Error('No document is loaded.');
+    if (!Number.isInteger(page) || page < 1 || page > doc.numPages) {
+      throw new Error(`This document has no page ${page}.`);
+    }
+    return doc.getPage(page);
   }
 
   private emit<K extends keyof ViewerEvents>(event: K, ...args: Parameters<ViewerEvents[K]>): void {

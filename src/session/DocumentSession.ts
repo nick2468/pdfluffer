@@ -25,6 +25,8 @@ export class DocumentSession {
   viewerDirty = false;
   hasDigitalSignature = false;
   isXfa = false;
+  /** From the last load. 0 until the tab is ready. */
+  pageCount = 0;
   xfaBannerDismissed = false;
 
   // The spec 8.4 private fields. They are public to TypeScript so SessionManager can reach

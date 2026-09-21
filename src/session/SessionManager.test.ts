@@ -1253,6 +1253,65 @@ describe("SessionManager currentPage", () => {
   });
 });
 
+// Spec 20.4: what the OCR tool asks of a tab. Thin pass-throughs to the viewer.
+
+describe("SessionManager page reading for OCR (spec 20.4)", () => {
+  it("knows how many pages the loaded document has", async () => {
+    const { manager, viewers, tab } = setup({ viewer: (v) => { v.docInfo = { pageCount: 4, isXfa: false }; } });
+    await manager.start();
+    await manager.openRefs([A]);
+    expect(manager.pageCount(tab(0).id)).toBe(4);
+    expect(viewers).toHaveLength(1);
+  });
+
+  it("follows the page count through an operation that adds pages", async () => {
+    const { manager, viewers, id } = await openWithEngine();
+    expect(manager.pageCount(id)).toBe(1);
+    viewers[0].docInfo = { pageCount: 3, isXfa: false };
+    expect(await manager.runOp(id, { kind: "flatten" })).toBe(true);
+    expect(manager.pageCount(id)).toBe(3);
+  });
+
+  it("has no page count for a tab that is not ready, or an id that is not a tab", async () => {
+    const { manager, files, tab } = setup();
+    await files.saveState("session", savedSession([A, B], 0));
+    await manager.start();
+    expect(manager.pageCount(tab(1).id)).toBeNull();   // unloaded
+    expect(manager.pageCount("no-such-tab")).toBeNull();
+  });
+
+  it("asks the tab's viewer for a page picture, and hands back what it gave", async () => {
+    const { manager, viewers, tab } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    const picture = {
+      bytes: new Uint8Array([0xff, 0xd8]), width: 800, height: 600,
+      transform: [2, 0, 0, -2, 0, 600] as [number, number, number, number, number, number],
+    };
+    viewers[0].pageImage = picture;
+    expect(await manager.renderPageImage(tab(0).id, 2, 4000)).toBe(picture);
+    expect(viewers[0].renders).toEqual([{ page: 2, maxDimension: 4000 }]);
+  });
+
+  it("asks the tab's viewer how much real text a page holds", async () => {
+    const { manager, viewers, tab } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    viewers[0].textLengths = [120, 0];
+    expect(await manager.pageTextLength(tab(0).id, 1)).toBe(120);
+    expect(await manager.pageTextLength(tab(0).id, 2)).toBe(0);
+  });
+
+  it("refuses to read a page from a tab that is not ready", async () => {
+    const { manager, files, tab } = setup();
+    await files.saveState("session", savedSession([A, B], 0));
+    await manager.start();
+    await expect(manager.renderPageImage(tab(1).id, 1, 4000)).rejects.toThrow();
+    await expect(manager.pageTextLength(tab(1).id, 1)).rejects.toThrow();
+    await expect(manager.pageTextLength("no-such-tab", 1)).rejects.toThrow();
+  });
+});
+
 // Spec 13.6: Revert to saved
 
 describe("SessionManager revert (spec 13.6)", () => {
