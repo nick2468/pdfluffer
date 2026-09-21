@@ -79,6 +79,10 @@ const backup = join(work, "state-backup");
 cpSync(join(root, "samples"), join(work, "files"), { recursive: true });
 const had = Object.fromEntries(stateFiles.map((f) => [f, existsSync(join(stateDir, f))]));
 for (const f of stateFiles) if (had[f]) cpSync(join(stateDir, f), join(backup, f));
+// Start every run from an empty session. A tab the user left open would come back at the
+// first launch and fail every exact tab-list check below, for no fault of the app. The
+// finally block puts their own state back either way.
+for (const f of stateFiles) rmSync(join(stateDir, f), { force: true });
 const form = join(work, "files", "form-basic.pdf");
 const three = join(work, "files", "three-pages.pdf");
 const original = readFileSync(form);

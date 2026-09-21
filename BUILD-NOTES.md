@@ -32,8 +32,14 @@ did not run the installer. U6 is the user's.
 **Installer rebuild (chip 9, the last one).** Built again on 2026-09-21 after the final
 code commit, in 2 min 13 s of Rust compile, 2 min 24 s for the whole command. Same path,
 `src-tauri\target\release\bundle\nsis\PDFluffer_0.1.0_x64-setup.exe`, now 7,646,813 bytes
-(about 7.3 MB). It is the one F1 in `docs/user-checks-final.md` asks the user to run. The
-builder did not run it.
+(about 7.3 MB). The builder did not run it.
+
+**Installer rebuild (chip 10).** Built again on 2026-09-21 after chip 10's last code
+commit, in 1 min 58 s of Rust compile, 2 min 9 s for the whole command. Same path, now
+7,647,814 bytes (about 7.3 MB). **This is the installer F1 asks the user to run**: it is
+the first one carrying the Saved signatures dialog and the new Flatten wording.
+`npm run smoke:prod` passed 24 of 24 against the binary it ships. The builder did not
+run it.
 
 **`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
 and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
@@ -739,6 +745,17 @@ signature tool. `Input.insertText` also needs the page focused (`Page.bringToFro
       `Object.prototype.hasOwnProperty.call`. The rebuilt object goes through
       `Object.fromEntries`, which defines keys rather than assigning them, so a stored key
       named `__proto__` cannot reach an object prototype.
+
+28. **The smoke test now starts from an empty session** (chip 10,
+    `scripts/prod-smoke/run.mjs`). Its first run under chip 10 reported 20 of 24. All four
+    failures were one thing: the user's own saved session held a tab, so it came back at
+    the first launch and every exact tab-list comparison was one tab out. The app was right
+    in all four (the new file opened as the active tab, an already-open file switched to
+    its tab, and both tabs came back with the right one active); only the harness's
+    expectation was wrong. The script already backs up and restores `state.json` and
+    `.window-state.json`, so it now deletes them after the backup, which makes a run
+    deterministic whatever the user left open. Re-run: 24 of 24, and the user's own tab was
+    back in `state.json` afterwards, checked.
 
 ## Questions for the user
 
