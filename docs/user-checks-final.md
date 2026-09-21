@@ -1,5 +1,13 @@
 # PDFluffer - the final check list
 
+> **STATUS, 2026-09-21: every check in this file has passed. Nothing here is open.**
+> The user ran F1, F3, F7 to F11, F14, F15 (insert), F16, F18, F19 and F20 in the installed
+> app. Automation proved F2, F4, F5, F15 (rotate, revert, backup) and F17 in the production
+> build. F6, F12 and F13 are covered by tests and the builder's browser checks. The
+> **Results table at the end is the record.** The "What is left for you" column below, and
+> notes such as "nobody has run this yet", describe the day the list was written. Do not
+> raise them again. New checks for later phases go in their own file.
+
 The build is finished. On 2026-09-21 the orchestrator ran an automated test against the
 **production build** (the same program the installer ships) and 24 of 24 checks passed.
 That removed about half of this list. What is left needs a person at the real app.
