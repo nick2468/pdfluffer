@@ -5,9 +5,10 @@
 // its own that the app does not fetch until the first operation. A reader that never uses
 // the Document menu never downloads it.
 
-import type { PDFDocument, PDFObject, PDFPage } from "@cantoo/pdf-lib";
+import type { PDFDocument, PDFFont, PDFName, PDFObject, PDFOperator, PDFPage } from "@cantoo/pdf-lib";
+import { placeOcrPage, type PlacedWord } from "../ocr/placement";
 import {
-  EngineError, type Capability, type EngineAdapter, type EngineOp, type EngineResult,
+  EngineError, type Capability, type EngineAdapter, type EngineOp, type EngineResult, type OcrPageLayer,
 } from "./EngineAdapter";
 import { placementFor } from "./placement";
 
@@ -25,7 +26,7 @@ function loadPdfLib(): Promise<PdfLib> {
 }
 
 const CAPABILITIES: ReadonlySet<Capability> =
-  new Set<Capability>(['pages.insertPdf', 'pages.rotate', 'flatten']);
+  new Set<Capability>(['pages.insertPdf', 'pages.rotate', 'flatten', 'ocr']);
 
 export class PdfLibAdapter implements EngineAdapter {
   readonly name = "pdf-lib";
@@ -61,8 +62,10 @@ async function apply(pdf: PdfLib, doc: PDFDocument, op: EngineOp): Promise<void>
       return rotate(pdf, doc, op.pages, op.degrees);
     case 'flatten':
       return flatten(pdf, doc);
+    case 'ocr.addTextLayer':
+      return addTextLayer(pdf, doc, op.pages);
     default:
-      // Unreachable while EngineOp names three kinds. It catches a fourth added later.
+      // Unreachable while EngineOp names four kinds. It catches a fifth added later.
       throw new EngineError('unsupported', `pdf-lib cannot run ${(op as EngineOp).kind}.`);
   }
 }
@@ -165,6 +168,62 @@ function drawAnnotation(pdf: PdfLib, doc: PDFDocument, page: PDFPage, entry: PDF
     pdf.popGraphicsState(),
   );
   return true;
+}
+
+/**
+ * Spec 20.4: an invisible text layer over each page OCR read. One block per page, drawn in
+ * text rendering mode 3, which paints nothing, so the page looks exactly as it did.
+ *
+ * Every page index is checked before anything changes. Helvetica is one of the standard 14
+ * fonts, so there is no font file to embed, and it is embedded once for the whole document.
+ */
+async function addTextLayer(pdf: PdfLib, doc: PDFDocument, layers: OcrPageLayer[]): Promise<void> {
+  const pages = doc.getPages();
+  for (const layer of layers) {
+    if (!Number.isInteger(layer.pageIndex) || !pages[layer.pageIndex]) {
+      throw new EngineError('failed', `This document has no page ${layer.pageIndex + 1}.`);
+    }
+  }
+  if (!layers.some((layer) => layer.result.lines.some((line) => line.words.length > 0))) return;
+
+  const font = await doc.embedFont(pdf.StandardFonts.Helvetica);
+  // WinAnsi: Latin text only (spec 20.6). A character outside it is dropped, not guessed at.
+  const charset = new Set(font.getCharacterSet());
+  const encodable = (ch: string) => charset.has(ch.codePointAt(0) ?? -1);
+  const measure = (text: string, size: number) => font.widthOfTextAtSize(text, size);
+
+  for (const layer of layers) {
+    const words = placeOcrPage(layer.result, layer.transform, measure, encodable);
+    // A page with nothing to say keeps its content exactly as it was.
+    if (words.length === 0) continue;
+    const page = pages[layer.pageIndex];
+    const key = page.node.newFontDictionary(font.name, font.ref);
+    page.pushOperators(...textBlock(pdf, font, key, words));
+  }
+}
+
+/**
+ * q BT 3 Tr, then per word Tf Tm Tz Tj, then ET Q. pdf-lib's first write to a loaded page
+ * wraps the page's own content in q ... Q, so a scaling matrix a scanner left open is
+ * closed before this starts (a test proves it).
+ */
+function textBlock(pdf: PdfLib, font: PDFFont, key: PDFName, words: PlacedWord[]): PDFOperator[] {
+  const ops: PDFOperator[] = [
+    pdf.pushGraphicsState(),
+    pdf.beginText(),
+    pdf.setTextRenderingMode(pdf.TextRenderingMode.Invisible),
+  ];
+  for (const word of words) {
+    const [a, b, c, d, e, f] = word.matrix;
+    ops.push(
+      pdf.setFontAndSize(key, word.fontSize),
+      pdf.setTextMatrix(a, b, c, d, e, f),
+      pdf.setCharacterSqueeze(word.scalePercent),
+      pdf.showText(font.encodeText(word.text)),
+    );
+  }
+  ops.push(pdf.endText(), pdf.popGraphicsState());
+  return ops;
 }
 
 /** The numbers of a PDF array, or null if it is not an array of numbers. */

@@ -1001,8 +1001,10 @@ class FakeEngine implements EngineAdapter {
   /** Set to hold the run open, so a test can try to start a second one. */
   gate: Promise<void> | null = null;
 
+  readonly caps = new Set<Capability>(["pages.rotate", "flatten"]);
+
   capabilities(): ReadonlySet<Capability> {
-    return new Set<Capability>(["pages.rotate", "flatten"]);
+    return this.caps;
   }
 
   async run(op: EngineOp, bytes: Uint8Array): Promise<EngineResult> {
@@ -1032,6 +1034,17 @@ async function openWithEngine(files: [FileRef, Uint8Array?][] = [[A], [B]]) {
 }
 
 describe("SessionManager runOp (spec 13.3)", () => {
+  it("finds the engine for an OCR operation by the 'ocr' capability, not by its kind", async () => {
+    const { manager, engine, id } = await openWithEngine();
+    const op: EngineOp = { kind: "ocr.addTextLayer", pages: [] };
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await manager.runOp(id, op)).toBe(false);   // the engine has no 'ocr' yet
+    expect(engine.runs).toEqual([]);
+    engine.caps.add("ocr");
+    expect(await manager.runOp(id, op)).toBe(true);
+    expect(engine.runs.map((r) => r.op)).toEqual([op]);
+  });
+
   it("a successful operation marks the tab dirty and reloads the viewer once", async () => {
     const { manager, engine, viewer, id, tab } = await openWithEngine();
     viewer.viewState = { page: 3, scale: "page-width", rotation: 90 };

@@ -1,8 +1,9 @@
 import {
-  decodePDFRawStream, degrees, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, PDFStream,
-  StandardFonts, toDegrees,
+  concatTransformationMatrix, decodePDFRawStream, degrees, PDFArray, PDFDict, PDFDocument, PDFName,
+  PDFRawStream, PDFStream, StandardFonts, toDegrees,
 } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
+import type { OcrPageResult } from "../ocr/OcrService";
 import { EngineError, type EngineOp } from "./EngineAdapter";
 import { PdfLibAdapter } from "./pdfLibAdapter";
 
@@ -82,8 +83,8 @@ describe("PdfLibAdapter", () => {
     expect(engine.name).toBe("pdf-lib");
   });
 
-  it("has the three capabilities spec 13.4 names, and no more", async () => {
-    expect([...engine.capabilities()].sort()).toEqual(['flatten', 'pages.insertPdf', 'pages.rotate']);
+  it("has the three capabilities spec 13.4 names, OCR from spec 20.4, and no more", async () => {
+    expect([...engine.capabilities()].sort()).toEqual(['flatten', 'ocr', 'pages.insertPdf', 'pages.rotate']);
   });
 
   it("refuses an operation kind it does not know", async () => {
@@ -294,5 +295,146 @@ describe("PdfLibAdapter flatten: annotations", () => {
     const result = await engine.run({ kind: 'flatten' }, await pdfWithPages([[200, 200]]));
     expect(await annotSubtypes(result.bytes)).toEqual([]);
     expect(await contentOf(result.bytes)).not.toMatch(DRAWS_XOBJECT);
+  });
+});
+
+// Plan P4.7, spec 20.4: the invisible OCR text layer.
+
+/** The viewport PDF.js gives an upright 600 by 800 page at scale 1: points are pixels. */
+const UPRIGHT = [1, 0, 0, -1, 0, 800];
+
+function ocrPage(texts: string[]): OcrPageResult {
+  // One line, words 60 pixels wide and 20 tall, side by side near the top of the page.
+  return {
+    language: "en-GB",
+    width: 600,
+    height: 800,
+    textAngle: 0,
+    lines: [{ words: texts.map((text, i) => ({ text, x: 50 + i * 70, y: 100, w: 60, h: 20 })) }],
+  };
+}
+
+const layerOp = (pages: { pageIndex: number; texts: string[] }[]): EngineOp => ({
+  kind: 'ocr.addTextLayer',
+  pages: pages.map(({ pageIndex, texts }) => ({ pageIndex, result: ocrPage(texts), transform: UPRIGHT })),
+});
+
+const tokens = (content: string) => content.split(/\s+/).filter(Boolean);
+const count = (content: string, op: string) => tokens(content).filter((t) => t === op).length;
+
+/** Our block: from the q just before BT to the end. The page's own content comes before it. */
+function ourBlock(content: string): string[] {
+  const all = tokens(content);
+  const bt = all.indexOf("BT");
+  expect(bt).toBeGreaterThan(0);
+  expect(all[bt - 1]).toBe("q");
+  return all.slice(bt - 1);
+}
+
+/** The one font entry of a page's resources: its name in the page, and what it points at. */
+function fontsOf(doc: PDFDocument, index: number): [string, string][] {
+  const resources = doc.getPages()[index].node.Resources();
+  const fonts = resources?.lookup(PDFName.of("Font"), PDFDict);
+  return fonts ? fonts.entries().map(([name, ref]) => [String(name), String(ref)]) : [];
+}
+
+describe("PdfLibAdapter ocr.addTextLayer", () => {
+  it("adds one invisible text block with one show-text per word", async () => {
+    const op = layerOp([{ pageIndex: 0, texts: ["Hello", "there", "world"] }]);
+    const result = await engine.run(op, await pdfWithPages([[600, 800]]));
+    expect(result.mode).toBe("rewrite");
+    const content = await contentOf(result.bytes);
+    expect(count(content, "BT")).toBe(1);
+    expect(count(content, "ET")).toBe(1);
+    expect(content).toMatch(/\b3 Tr\b/);
+    expect(count(content, "Tj")).toBe(3);
+    // Each word in Helvetica's WinAnsi codes: "Hello" is 48 65 6C 6C 6F.
+    expect(content.toUpperCase()).toContain("<48656C6C6F> TJ");
+  });
+
+  it("sets the font, the text matrix and the horizontal scale for every word", async () => {
+    const op = layerOp([{ pageIndex: 0, texts: ["Hello", "there"] }]);
+    const content = await contentOf((await engine.run(op, await pdfWithPages([[600, 800]]))).bytes);
+    expect(count(content, "Tf")).toBe(2);
+    expect(count(content, "Tm")).toBe(2);
+    expect(count(content, "Tz")).toBe(2);
+    // An upright page, so the matrix starts 1 0 0 1, and the first word starts at x = 50.
+    expect(content).toMatch(/\b1 0 0 1 50 [\d.]+ Tm/);
+  });
+
+  it("draws nothing visible: no picture, no fill, no stroke, no shape", async () => {
+    const op = layerOp([{ pageIndex: 0, texts: ["Hello", "there"] }]);
+    const block = ourBlock(await contentOf((await engine.run(op, await pdfWithPages([[600, 800]]))).bytes));
+    for (const name of ["Do", "f", "F", "f*", "S", "s", "B", "B*", "b", "b*", "re", "sh", "BI"]) {
+      expect(block, `our block holds ${name}`).not.toContain(name);
+    }
+    expect(block[block.length - 1]).toBe("Q");
+  });
+
+  it("embeds Helvetica once, however many pages gain text", async () => {
+    const op = layerOp([{ pageIndex: 0, texts: ["one"] }, { pageIndex: 1, texts: ["two"] }]);
+    const doc = await PDFDocument.load((await engine.run(op, await pdfWithPages([[600, 800], [600, 800]]))).bytes);
+    const first = fontsOf(doc, 0);
+    const second = fontsOf(doc, 1);
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(first[0][1]).toBe(second[0][1]);
+    const fonts = doc.getPages()[0].node.Resources()?.lookup(PDFName.of("Font"), PDFDict);
+    const font = fonts?.lookup(PDFName.of(first[0][0].slice(1)), PDFDict);
+    expect(String(font?.get(PDFName.of("BaseFont")))).toBe("/Helvetica");
+  });
+
+  it("starts only after the page's own graphics state is closed, so a leaked cm cannot move it", async () => {
+    // Many scanners write a scaling matrix and never restore it. If our text came straight
+    // after, it would be scaled with the picture and land in the wrong place.
+    const doc = await PDFDocument.create();
+    doc.addPage([600, 800]).pushOperators(concatTransformationMatrix(2, 0, 0, 2, 0, 0));
+    const leaky = await doc.save();
+    expect(tokens(await contentOf(leaky))).not.toContain("q");
+
+    const content = await contentOf((await engine.run(layerOp([{ pageIndex: 0, texts: ["Hello"] }]), leaky)).bytes);
+    let depth = 0;
+    let depthAtCm = -1;
+    let depthBeforeOurBlock = -1;
+    for (const token of tokens(content)) {
+      if (token === "cm" && depthAtCm < 0) depthAtCm = depth;
+      if (token === "BT") { depthBeforeOurBlock = depth - 1; break; }   // less our own q
+      if (token === "q") depth++;
+      if (token === "Q") depth--;
+    }
+    expect(depthAtCm).toBeGreaterThanOrEqual(1);   // the page's cm now sits inside a q ... Q
+    expect(depthBeforeOurBlock).toBe(0);           // and that pair is closed before our q
+  });
+
+  it("drops a word Helvetica cannot write, using the font's own character set", async () => {
+    // e acute and sharp s are in WinAnsi. Japanese is not.
+    const op = layerOp([{ pageIndex: 0, texts: ["café", "日本", "Straße"] }]);
+    expect(count(await contentOf((await engine.run(op, await pdfWithPages([[600, 800]]))).bytes), "Tj")).toBe(2);
+  });
+
+  it("leaves a page with no words exactly as it was", async () => {
+    const before = await pdfWithPages([[600, 800], [600, 800]]);
+    const op = layerOp([{ pageIndex: 0, texts: [] }, { pageIndex: 1, texts: ["Hello"] }]);
+    const result = await engine.run(op, before);
+    expect(await contentOf(result.bytes, 0)).toBe(await contentOf(before, 0));
+    expect(count(await contentOf(result.bytes, 1), "Tj")).toBe(1);
+  });
+
+  it("leaves the pages it was not given alone", async () => {
+    const before = await pdfWithPages([[600, 800], [600, 800], [600, 800]]);
+    const result = await engine.run(layerOp([{ pageIndex: 1, texts: ["middle"] }]), before);
+    expect(await contentOf(result.bytes, 0)).toBe(await contentOf(before, 0));
+    expect(await contentOf(result.bytes, 2)).toBe(await contentOf(before, 2));
+    expect(count(await contentOf(result.bytes, 1), "Tj")).toBe(1);
+  });
+
+  it("fails for a page index that is not in the document", async () => {
+    const bytes = await pdfWithPages([[600, 800]]);
+    expect(await codeOf(engine.run(layerOp([{ pageIndex: 1, texts: ["x"] }]), bytes))).toBe("failed");
+    expect(await codeOf(engine.run(layerOp([{ pageIndex: -1, texts: ["x"] }]), bytes))).toBe("failed");
+  });
+
+  it("reports an encrypted file as encrypted", async () => {
+    expect(await codeOf(engine.run(layerOp([{ pageIndex: 0, texts: ["x"] }]), await encryptedPdf()))).toBe("encrypted");
   });
 });

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { Capability, EngineAdapter, EngineResult } from "./EngineAdapter";
+import { capabilityOf, type Capability, type EngineAdapter, type EngineResult } from "./EngineAdapter";
 import { EngineRegistry } from "./engineRegistry";
 
-/** The five capability names spec 13.1 reserves for engines that do not exist yet. */
-const RESERVED: Capability[] = ['text.edit', 'redact', 'ocr', 'sign.verify', 'sign.certificate'];
+/**
+ * The capability names spec 13.1 reserves for engines that do not exist yet. 'ocr' was one
+ * of them until spec 20 gave pdf-lib the OCR text layer.
+ */
+const RESERVED: Capability[] = ['text.edit', 'redact', 'sign.verify', 'sign.certificate'];
 
 function adapter(name: string, ...capabilities: Capability[]): EngineAdapter {
   return {
@@ -48,7 +51,7 @@ describe("EngineRegistry", () => {
     expect(engines.has(['pages.rotate', 'ocr'])).toBe(false);
   });
 
-  it("matches none of the five reserved capability names", () => {
+  it("matches none of the reserved capability names", () => {
     const engines = new EngineRegistry();
     engines.register(adapter("pdf-lib", 'pages.insertPdf', 'pages.rotate', 'flatten'));
     for (const capability of RESERVED) {
@@ -62,5 +65,14 @@ describe("EngineRegistry", () => {
     const b = new EngineRegistry();
     a.register(adapter("only-a", 'flatten'));
     expect(b.findAdapter('flatten')).toBeNull();
+  });
+});
+
+describe("capabilityOf", () => {
+  it("names each operation's capability after its kind, except OCR's (spec 20.4)", () => {
+    expect(capabilityOf({ kind: "flatten" })).toBe("flatten");
+    expect(capabilityOf({ kind: "pages.rotate", pages: "all", degrees: 90 })).toBe("pages.rotate");
+    expect(capabilityOf({ kind: "pages.insertPdf", other: new Uint8Array() })).toBe("pages.insertPdf");
+    expect(capabilityOf({ kind: "ocr.addTextLayer", pages: [] })).toBe("ocr");
   });
 });

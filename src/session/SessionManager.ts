@@ -2,7 +2,7 @@
 // through useSession(), built on useSyncExternalStore, so getSnapshot() must return the same
 // object until something changes.
 
-import { EngineError, type EngineAdapter, type EngineOp } from "../engine/EngineAdapter";
+import { capabilityOf, EngineError, type EngineAdapter, type EngineOp } from "../engine/EngineAdapter";
 import type { EngineRegistry } from "../engine/engineRegistry";
 import { FileError, type FileAdapter, type FileRef } from "../files/FileAdapter";
 import { hasDigitalSignature } from "../util/hasDigitalSignature";
@@ -349,7 +349,7 @@ export class SessionManager {
     if (!tab || tab.status !== 'ready' || !tab.viewer || tab.busy) return false;
 
     // Before any dialog: an operation no engine can run must not nag the user first.
-    const adapter = this.engines?.findAdapter(op.kind) ?? null;
+    const adapter = this.engines?.findAdapter(capabilityOf(op)) ?? null;
     if (!adapter) {
       console.warn(`No engine can run ${op.kind}. The document is unchanged.`);
       return false;
