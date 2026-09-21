@@ -28,7 +28,7 @@ there to fill in. Plan items P1.20, P2.10 and P2.11 are ticked when these pass.
 | F12 A file another program holds | Proven in Rust tests with a really locked file | Optional |
 | F13 A file that moved, and Locate | Proven in unit tests and in a browser | Optional |
 | F14 Copy and paste text | **Nobody has run this yet** | **Yours.** A core feature |
-| F15 Document tools and backup | Part proven: Rotate, Revert and the backup setting all work in the production build | Optional: inserting a PDF |
+| F15 Document tools and backup | **Proven**: Rotate, Revert and the backup setting in the production build, and inserting a PDF by the user in the installed app, 2026-09-21 | Nothing. Done |
 | F16 Flattening a signed form | The builder compared before and after in PDF.js. Other viewers cannot be automated | **Yours** |
 | F17 No security-policy errors | **Proven** in the production build: none, across open, fill, save, tools, revert and close | Nothing, if F7 and F9 pass in the installed app |
 | F18 How it looks and feels | Only you can judge | **Yours.** The most useful one |
@@ -293,8 +293,9 @@ The builder's browser tool could not select text, so nobody has run this yet.
 
 ## F15 - the Document tools
 
-*Optional, and now nearly all proven. Rotate, Revert and the whole backup setting are
-proven in the production build. **Inserting a PDF** is the only part left.*
+*Done. Nothing is left here. Rotate, Revert and the whole backup setting are proven in the
+production build, and the user ran **Insert PDF at end...** in the installed app on
+2026-09-21 and it passed. The steps stay for reference.*
 
 These are phase 2. The builder checked all of them in a browser on 2026-09-21. This check
 is about the real app and real files.
