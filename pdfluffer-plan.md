@@ -75,7 +75,7 @@ and P3.5 as well.
 - [x] P4.1 Test pictures with known word positions: straight, skewed both ways, and one too large (chip 11)
 - [x] P4.2 Rust: `ocr_status` and `ocr_image` with `cargo test` against the test pictures (spec 20.3)
 - [x] P4.3 Settle, with evidence, how `TextAngle` and `BoundingRect` map back onto a skewed picture (spec 20.2)
-- [ ] P4.4 `OcrService`, `fakeOcrService`, `tauriOcrService` (spec 20.4)
+- [x] P4.4 `OcrService`, `fakeOcrService`, `tauriOcrService` (spec 20.4)
 - [ ] P4.5 `Viewer.renderPageImage` and `pageTextLength` (spec 20.4)
 - [ ] P4.6 `placement.ts` with tests, using what P4.3 found
 - [ ] P4.7 `ocr.addTextLayer` in `pdfLibAdapter`, with tests
