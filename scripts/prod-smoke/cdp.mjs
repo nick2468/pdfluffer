@@ -1,12 +1,13 @@
 // Minimal Chrome DevTools Protocol client for driving the production PDFluffer window.
+// PDFluffer's own WebView2 port. The fixtures script passes its own, for a headless Edge.
 const PORT = 9223;
-export async function connect() {
+export async function connect(port = PORT) {
   let targets;
   for (let i = 0; i < 40; i++) {
-    try { targets = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json(); if (targets.some(t => t.type === 'page')) break; } catch {}
+    try { targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); if (targets.some(t => t.type === 'page')) break; } catch {}
     await sleep(500);
   }
-  if (!targets) throw new Error('no debugging endpoint on port ' + PORT);
+  if (!targets) throw new Error('no debugging endpoint on port ' + port);
   const page = targets.find(t => t.type === 'page');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   let id = 0; const pending = new Map(); const events = [];
