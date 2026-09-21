@@ -41,6 +41,13 @@ the first one carrying the Saved signatures dialog and the new Flatten wording.
 `npm run smoke:prod` passed 24 of 24 against the binary it ships. The builder did not
 run it.
 
+**Installer rebuild (chip 11).** Built again on 2026-09-21 after chip 11's last code
+commit, in 2 min 54 s for the whole command, the Rust side now linking Windows OCR. Same
+path, now 7,659,483 bytes, 11,669 more than chip 10's: the `windows` crate was already in
+the binary through Tauri, so only the OCR code itself was added. `npm run smoke:prod`
+passed 24 of 24 against it. It adds no user-visible feature yet, so the user has no reason
+to install it. The builder did not run it.
+
 **`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
 and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
 output. Another `pdfluffer.exe` dev instance was already running (started 19:14 by a
@@ -868,6 +875,36 @@ state back, checked afterwards both times it ran.
     `.window-state.json`, so it now deletes them after the backup, which makes a run
     deterministic whatever the user left open. Re-run: 24 of 24, and the user's own tab was
     back in `state.json` afterwards, checked.
+
+29. **Small choices chip 11 left open:**
+    - The `windows` crate needed **exactly** the six features the chip named, no more. The
+      one surprise was a name: in 0.61 the three-argument conversion is
+      `SoftwareBitmap::ConvertWithAlpha`, and `Convert` takes two. The compiler said so.
+    - It is a plain `[dependencies]` entry, not `[target.'cfg(windows)'.dependencies]`.
+      Spec 20.6 makes OCR Windows only, and the whole app already is.
+    - `Cargo.lock` gained one line, `windows` in PDFluffer's own list. No new crate, no
+      second version compiled.
+    - The size check reads `PixelWidth` and `PixelHeight` from the **decoder**, before any
+      pixels are decoded. A picture too big for the engine is not worth turning into a
+      10000-pixel bitmap first.
+    - On a straight picture the engine reports `textAngle` as **0, not null**. The test
+      allows either, as the chip asked, and chip 12 should too.
+    - The fixture lines run nearly the full page width, which the chip did not ask for. A
+      rotation moves a word further the further it sits from the centre, so a short line
+      down the middle would agree with almost any candidate rule. Decision 16's middle word
+      is off by under two pixels in both pictures while the corners are twenty out.
+    - `too-large.png` is written by the script itself as a plain white PNG, 10200 by 100,
+      1,318 bytes, using only Node's `zlib`. No browser screenshots 10200 pixels wide, and
+      no image library was allowed.
+    - `scripts/prod-smoke/cdp.mjs`'s `connect` takes an optional port, default 9223, so the
+      fixtures script can reuse it against a headless Edge. `run.mjs` and `backup.mjs` pass
+      nothing and are unchanged.
+    - **The two commands were called over real IPC in the release build**, from the page,
+      with `straight.png` as a raw body: `ocr_status` gave
+      `{"available":true,"language":"en-GB","maxImageDimension":10000}` and `ocr_image` gave
+      all 151 words in 74 ms, with the camelCase keys `textAngle` and `maxImageDimension`
+      the TypeScript types expect. Garbage bytes were rejected with an `ocr: ` string. A
+      throwaway script, not committed: chip 12's `ocr.mjs` (P4.9) is the real OCR smoke test.
 
 ## Questions for the user
 
