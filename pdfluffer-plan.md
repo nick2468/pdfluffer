@@ -77,7 +77,7 @@ and P3.5 as well.
 - [x] P4.3 Settle, with evidence, how `TextAngle` and `BoundingRect` map back onto a skewed picture (spec 20.2)
 - [x] P4.4 `OcrService`, `fakeOcrService`, `tauriOcrService` (spec 20.4)
 - [x] P4.5 `Viewer.renderPageImage` and `pageTextLength` (spec 20.4)
-- [ ] P4.6 `placement.ts` with tests, using what P4.3 found
+- [x] P4.6 `placement.ts` with tests, using what P4.3 found
 - [ ] P4.7 `ocr.addTextLayer` in `pdfLibAdapter`, with tests
 - [ ] P4.8 The tool, the confirm, the progress dialog with Cancel, the closing message (spec 20.5)
 - [ ] P4.9 `scripts/prod-smoke/ocr.mjs`: OCR a scanned sample in the release build and check the words and their positions
