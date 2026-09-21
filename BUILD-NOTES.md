@@ -516,6 +516,24 @@ Edge, PDF.js's editor buttons stayed disabled, so a scripted `.click()` on them 
 Dispatching `switchannotationeditormode` on the viewer's event bus with mode 101 opened the
 signature tool. `Input.insertText` also needs the page focused (`Page.bringToFront`).
 
+**The backup checkbox, proven end to end, 2026-09-21 (chip 10, plan P2.11).** Spec 17's
+last phase 2 criterion is "the Settings backup checkbox works". Every piece of that chain
+was tested and no test crossed it: the checkbox's handler, the setting persisting, the
+`x-backup` header, and Rust's `write_atomic`. `node scripts/prod-smoke/backup.mjs` now
+crosses it in the release build, and passed 14 of 14.
+
+It ticks the real checkbox in the real Settings dialog (off to start with), fills a field,
+saves with Overwrite, and then reads the folder: `form-basic.backup.pdf` appears holding
+the original 7,948 bytes byte for byte, while `form-basic.pdf` has become 8,695. A second
+edit and save asks nothing and leaves the backup exactly as it was, which is the Rust
+rule "one backup, made once, never overwritten" seen from the outside. Restarting the app
+shows the setting still ticked. No console error and no native prompt.
+
+It is a separate script from `run.mjs` because it has to restart the app, and because a
+new leg in a trusted 24 of 24 test is a bad place to take a risk. Same safety: it refuses
+to run while PDFluffer is open, works on copies in a temp folder, and puts the user's own
+state back, checked afterwards both times it ran.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and

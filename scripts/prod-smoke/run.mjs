@@ -15,6 +15,10 @@
 // It cannot prove: the installer, the Windows file association, window focus, native file
 // dialogs, printing, real drag and drop, or how anything looks. Those stay USER checks.
 //
+// Its sibling, `node scripts/prod-smoke/backup.mjs`, proves the Settings backup checkbox
+// the same way. It is separate because it has to restart the app to check the setting
+// persists.
+//
 // Safety: it refuses to run while PDFluffer is open (single instance would hijack the launch),
 // works on copies of samples/ in a temp folder, and backs up and restores the user's
 // state.json and window state, so the user's saved session and recent list are untouched.

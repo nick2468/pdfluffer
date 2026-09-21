@@ -56,7 +56,7 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P2.8 Revert to saved. The backup setting, end to end (spec 13.6)
 - [x] P2.9 Harness check H11 passes. `npm run check` passes. Commit
 - [x] P2.10 **USER** A flattened, signed form looks right in Acrobat, Chrome and Edge
-- [ ] P2.11 Phase 2 acceptance criteria met (spec 17)
+- [x] P2.11 Phase 2 acceptance criteria met (spec 17)
 
 ## Phase 3 - fixes after the first user test (2026-09-21)
 
