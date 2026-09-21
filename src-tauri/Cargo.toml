@@ -29,6 +29,19 @@ tauri-plugin-window-state = "2"
 dunce = "1.0.5"
 percent-encoding = "2.3.2"
 
+# Windows' built-in OCR (spec 20.3). The version Tauri already locks, so nothing extra is
+# downloaded or compiled twice.
+[dependencies.windows]
+version = "0.61.3"
+features = [
+  "Foundation",
+  "Foundation_Collections",
+  "Globalization",
+  "Graphics_Imaging",
+  "Media_Ocr",
+  "Storage_Streams",
+]
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

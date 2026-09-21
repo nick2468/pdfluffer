@@ -1,6 +1,7 @@
-// The Tauri host (spec 10.3 and 10.4): four commands, single instance and the plugins.
+// The Tauri host (spec 10.3, 10.4 and 20.3): six commands, single instance and the plugins.
 
 mod files;
+mod ocr;
 mod paths;
 
 use percent_encoding::percent_decode_str;
@@ -32,6 +33,20 @@ fn write_pdf(request: Request) -> Result<(), String> {
         .ok_or_else(|| "io: bad x-path header".to_owned())?;
     let backup = headers.get("x-backup").is_some_and(|value| value.as_bytes() == b"1");
     files::write_atomic(Path::new(path.as_ref()), bytes, backup)
+}
+
+// Off the main thread: recognising a page takes a moment, and the picture is large.
+#[tauri::command(async)]
+fn ocr_image(request: Request) -> Result<ocr::OcrPageResult, String> {
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return Err("ocr: expected raw bytes".to_owned());
+    };
+    ocr::recognise(bytes)
+}
+
+#[tauri::command]
+fn ocr_status() -> ocr::OcrStatus {
+    ocr::status()
 }
 
 #[tauri::command]
@@ -72,7 +87,9 @@ pub fn run() {
             read_pdf,
             write_pdf,
             normalise_paths,
-            take_pending_files
+            take_pending_files,
+            ocr_image,
+            ocr_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
