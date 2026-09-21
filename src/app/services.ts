@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 import type { EngineRegistry } from "../engine/engineRegistry";
 import type { FileAdapter } from "../files/FileAdapter";
+import type { OcrService } from "../ocr/OcrService";
 import type { SessionManager, SessionSnapshot } from "../session/SessionManager";
 import type { ToolRegistry } from "../tools/toolRegistry";
 import type { DialogService } from "./dialogService";
@@ -14,6 +15,8 @@ export interface Services {
   /** Phase 2. The menu asks the tool registry which tools these engines can serve. */
   engines: EngineRegistry;
   tools: ToolRegistry;
+  /** Phase 4. Null in the browser harness and on a PC with no OCR language (spec 20.4). */
+  ocr: OcrService | null;
 }
 
 export const ServicesContext = createContext<Services | null>(null);

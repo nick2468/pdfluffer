@@ -3,7 +3,7 @@ import type { EngineOp } from "../engine/EngineAdapter";
 import { FakeFileAdapter } from "../files/fakeFileAdapter";
 import { FileError, type FileRef } from "../files/FileAdapter";
 import {
-  BUTTON, FLATTEN_DIALOG, OPEN_FAILED_TITLE, type DialogButton, type Dialogs,
+  BUTTON, FLATTEN_DIALOG, OPEN_FAILED_TITLE, type DialogButton, type Dialogs, type Progress,
 } from "../session/dialogTexts";
 import type { SessionManager } from "../session/SessionManager";
 import {
@@ -36,6 +36,11 @@ class FakeDialogs implements Dialogs {
     const id = this.queue.shift();
     if (id === undefined) throw new Error(`Unexpected dialog with nothing queued: "${title}"`);
     return id;
+  }
+
+  /** Nothing tested here shows a progress dialog. The OCR tool's tests have a real fake. */
+  progress(): Progress {
+    throw new Error("No progress dialog was expected here.");
   }
 }
 
@@ -73,6 +78,7 @@ function setup(files: [FileRef, Uint8Array][] = [[A, BYTES_A], [B, BYTES_B]]) {
     session: session as unknown as SessionManager,
     files: adapter,
     dialogs,
+    ocr: null,
   };
   return { files: adapter, session, dialogs, ctx };
 }

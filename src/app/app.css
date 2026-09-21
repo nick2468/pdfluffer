@@ -358,6 +358,13 @@ button:focus-visible, .tab:focus-visible {
   color: var(--danger);
 }
 
+/* The progress dialog's Cancel, once pressed, while the job finishes its step (spec 20.5). */
+.dialog-buttons button:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
 .empty-title {
   margin: 0 0 4px;
   font-size: 28px;

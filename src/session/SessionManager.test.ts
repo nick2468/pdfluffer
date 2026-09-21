@@ -11,6 +11,7 @@ import {
   closeDirtyDialog, ENCRYPTED_DIALOG, externalLinkDialog, firstSaveDialog, LOCKED_DIALOG,
   OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG, OPERATION_GUARD_DIALOG, REVERT_DIALOG,
   REVERT_FAILED_TITLE, SAVE_FAILED_TITLE, SIGNATURE_GUARD_DIALOG, type DialogButton, type Dialogs,
+  type Progress,
 } from "./dialogTexts";
 import { SessionManager } from "./SessionManager";
 import type { HistoryStateV1, SessionStateV1, SettingsV1 } from "./state";
@@ -40,6 +41,11 @@ class FakeDialogs implements Dialogs {
       throw new Error(`Unexpected dialog with nothing queued: "${title}"`);
     }
     return id;
+  }
+
+  /** Nothing tested here shows a progress dialog. The OCR tool's tests have a real fake. */
+  progress(): Progress {
+    throw new Error("No progress dialog was expected here.");
   }
 }
 

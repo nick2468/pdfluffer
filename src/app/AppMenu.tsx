@@ -14,7 +14,7 @@ export default function AppMenu(
   { active, onSettings, onSavedSignatures }:
   { active: TabSnapshot | undefined; onSettings: () => void; onSavedSignatures: () => void },
 ) {
-  const { manager, dialogs, files, engines, tools } = useServices();
+  const { manager, dialogs, files, engines, tools, ocr } = useServices();
   const { recent } = useSession(manager);
   // Spec 13.2: only the tools some engine can serve. The registries never change.
   const documentTools = useMemo(() => tools.available(engines), [tools, engines]);
@@ -103,7 +103,7 @@ export default function AppMenu(
               role="menuitem"
               className="menu-item nested-item"
               disabled={!ready}
-              onClick={run(() => active && tool.run({ tabId: active.id, session: manager, files, dialogs }))}
+              onClick={run(() => active && tool.run({ tabId: active.id, session: manager, files, dialogs, ocr }))}
             >
               <span className="menu-label">{tool.label}</span>
             </button>

@@ -5,6 +5,7 @@
 import type { Capability } from "../engine/EngineAdapter";
 import type { EngineRegistry } from "../engine/engineRegistry";
 import type { FileAdapter } from "../files/FileAdapter";
+import type { OcrService } from "../ocr/OcrService";
 import type { Dialogs } from "../session/dialogTexts";
 import type { SessionManager } from "../session/SessionManager";
 
@@ -13,6 +14,8 @@ export interface ToolContext {
   session: SessionManager;
   files: FileAdapter;
   dialogs: Dialogs;
+  /** Spec 20.4. Null where there is no engine, and then the OCR tool is not offered. */
+  ocr: OcrService | null;
 }
 
 export interface Tool {

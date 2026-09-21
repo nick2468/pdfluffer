@@ -3,8 +3,18 @@
 
 export interface DialogButton { id: string; label: string; kind?: "primary" | "danger"; }
 
+/** A long job's dialog: one line of text that changes, and a Cancel button (spec 20.5). */
+export interface Progress {
+  update(text: string): void;
+  /** True once the user chose Cancel. The job checks it and stops at a safe point. */
+  readonly cancelled: boolean;
+  close(): void;
+}
+
 export interface Dialogs {
   ask(title: string, body: string, buttons: DialogButton[]): Promise<string>; // returns id
+  /** Shows at once and stays until close(). Modal, so the document cannot change meanwhile. */
+  progress(title: string, text: string): Progress;
 }
 
 export interface DialogText { title: string; body: string; buttons: DialogButton[]; }
@@ -116,6 +126,64 @@ export const REVERT_FAILED_TITLE = "Could not revert";
 /** Spec 13.6, re-reading the file failed. The document is left as it was. */
 export function revertFailedDialog(message: string): DialogText {
   return { title: REVERT_FAILED_TITLE, body: message, buttons: [BUTTON.ok] };
+}
+
+// Spec 20.5, the OCR tool: "Make text selectable (OCR)...".
+
+/** Every page already has text, so there is nothing for OCR to do. */
+export const NOTHING_TO_READ_DIALOG: DialogText = {
+  title: "Nothing to read",
+  body: "Every page already has selectable text.",
+  buttons: [BUTTON.ok],
+};
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Before reading: how many pages need it. "1 of 1 page has", "2 of 3 pages have". */
+export function ocrConfirmDialog(needed: number, total: number): DialogText {
+  return {
+    title: "Make text selectable?",
+    body: `${needed} of ${plural(total, "page", "pages")} ${needed === 1 ? "has" : "have"} `
+      + "no selectable text. PDFluffer will read "
+      + `${needed === 1 ? "it" : "them"} and add an invisible text layer. The pages will look exactly `
+      + "the same. This can take a few seconds a page.",
+    buttons: [{ id: BUTTON.continue.id, label: "Make selectable", kind: "primary" }, BUTTON.cancel],
+  };
+}
+
+export const OCR_PROGRESS_TITLE = "Reading the pages";
+
+export function ocrProgressText(page: number, of: number): string {
+  return `Reading page ${page} of ${of}...`;
+}
+
+/** After reading, with the text layer added. `language` is already a name a person reads. */
+export function ocrDoneDialog(words: number, pages: number, language: string): DialogText {
+  return {
+    title: "Text added",
+    body: `Added ${plural(words, "word", "words")} to ${plural(pages, "page", "pages")}, read as `
+      + `${language}. Select some text to check it, then save.`,
+    buttons: [BUTTON.ok],
+  };
+}
+
+/** Pages were read, and none of them held printed text. Nothing is changed. */
+export const OCR_NO_TEXT_DIALOG: DialogText = {
+  title: "No text found",
+  body: "PDFluffer found no printed text on those pages. Handwriting cannot be read.",
+  buttons: [BUTTON.ok],
+};
+
+export const OCR_FAILED_TITLE = "Could not read the page";
+
+/** One page could not be read. The run stops and nothing is changed. */
+export function ocrFailedDialog(code: 'unavailable' | 'too-large' | 'failed', detail: string): DialogText {
+  const why = {
+    'unavailable': "Windows has no OCR language installed, so this computer cannot read pages.",
+    'too-large': "The page is too large for Windows to read.",
+    'failed': detail ? `Windows could not read the page. ${detail}` : "Windows could not read the page.",
+  }[code];
+  return { title: OCR_FAILED_TITLE, body: `${why} Nothing was changed.`, buttons: [BUTTON.ok] };
 }
 
 /** Spec 12.3, Save As onto a file that is open in another tab. */

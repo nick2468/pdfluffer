@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TabSnapshot } from "../session/DocumentSession";
 import { isReloadKey, shortcutFor } from "../viewer/shortcutFor";
 import ChoiceDialog from "./ChoiceDialog";
+import ProgressDialog from "./ProgressDialog";
 import SavedSignaturesDialog from "./SavedSignaturesDialog";
 import SettingsDialog from "./SettingsDialog";
 import TabBar from "./TabBar";
@@ -60,6 +61,7 @@ export default function App() {
         <Panel tabs={tabs} active={active} />
       </main>
       <ChoiceDialog />
+      <ProgressDialog />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <SavedSignaturesDialog open={signaturesOpen} onClose={() => setSignaturesOpen(false)} />
     </div>

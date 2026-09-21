@@ -1,7 +1,8 @@
 // The Dialogs service of spec 8.5 and 11.5. ask() queues a question and returns a promise.
-// ChoiceDialog shows the first question in the queue, one at a time.
+// ChoiceDialog shows the first question in the queue, one at a time. progress() shows a long
+// job's dialog at once, beside that queue, and ProgressDialog draws it (spec 20.5).
 
-import type { DialogButton, Dialogs } from "../session/dialogTexts";
+import type { DialogButton, Dialogs, Progress } from "../session/dialogTexts";
 
 export interface PendingDialog {
   title: string;
@@ -11,9 +12,33 @@ export interface PendingDialog {
 
 interface Entry extends PendingDialog { resolve(id: string): void; }
 
+/** What ProgressDialog draws. A new object on every change, so React sees each one. */
+export interface ProgressView {
+  title: string;
+  text: string;
+  /** The user chose Cancel and the job is finishing the step it is on. */
+  cancelling: boolean;
+}
+
+/** The job's handle. It only reaches the screen while it is the one showing. */
+class ProgressHandle implements Progress {
+  cancelled = false;
+  constructor(private readonly service: DialogService) {}
+
+  update(text: string): void {
+    this.service.changeProgress(this, (view) => ({ ...view, text }));
+  }
+
+  close(): void {
+    this.service.closeProgress(this);
+  }
+}
+
 export class DialogService implements Dialogs {
   private queue: Entry[] = [];
   private listeners = new Set<() => void>();
+  private progressHandle: ProgressHandle | null = null;
+  private progressView: ProgressView | null = null;
 
   ask(title: string, body: string, buttons: DialogButton[]): Promise<string> {
     return new Promise((resolve) => {
@@ -35,6 +60,40 @@ export class DialogService implements Dialogs {
     const entry = this.queue.shift();
     if (!entry) return;
     entry.resolve(id);
+    this.notify();
+  }
+
+  progress(title: string, text: string): Progress {
+    const handle = new ProgressHandle(this);
+    this.progressHandle = handle;
+    this.progressView = { title, text, cancelling: false };
+    this.notify();
+    return handle;
+  }
+
+  /** The progress dialog on screen, or null. The same object until it changes. */
+  readonly currentProgress = (): ProgressView | null => this.progressView;
+
+  /** The Cancel button. The job sees it through `cancelled` and stops at a safe point. */
+  cancelProgress(): void {
+    const handle = this.progressHandle;
+    if (!handle || handle.cancelled) return;
+    handle.cancelled = true;
+    this.changeProgress(handle, (view) => ({ ...view, cancelling: true }));
+  }
+
+  /** @internal For ProgressHandle. A handle that is no longer showing changes nothing. */
+  changeProgress(handle: ProgressHandle, change: (view: ProgressView) => ProgressView): void {
+    if (handle !== this.progressHandle || !this.progressView) return;
+    this.progressView = change(this.progressView);
+    this.notify();
+  }
+
+  /** @internal For ProgressHandle. */
+  closeProgress(handle: ProgressHandle): void {
+    if (handle !== this.progressHandle) return;
+    this.progressHandle = null;
+    this.progressView = null;
     this.notify();
   }
 
