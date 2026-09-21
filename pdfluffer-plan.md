@@ -80,5 +80,5 @@ and P3.5 as well.
 - [x] P4.6 `placement.ts` with tests, using what P4.3 found
 - [x] P4.7 `ocr.addTextLayer` in `pdfLibAdapter`, with tests
 - [x] P4.8 The tool, the confirm, the progress dialog with Cancel, the closing message (spec 20.5)
-- [ ] P4.9 `scripts/prod-smoke/ocr.mjs`: OCR a scanned sample in the release build and check the words and their positions
+- [x] P4.9 `scripts/prod-smoke/ocr.mjs`: OCR a scanned sample in the release build and check the words and their positions
 - [ ] P4.10 **USER** OCR a real scan, select and copy text, check it in another viewer

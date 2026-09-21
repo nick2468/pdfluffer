@@ -48,6 +48,12 @@ the binary through Tauri, so only the OCR code itself was added. `npm run smoke:
 passed 24 of 24 against it. It adds no user-visible feature yet, so the user has no reason
 to install it. The builder did not run it.
 
+**Installer rebuild (chip 12).** Built again on 2026-09-21 after chip 12's last code
+commit. Same path, now 7,662,393 bytes. **This is the one for the OCR check**
+(`docs/user-checks-ocr.md`): it is the first with the OCR tool. Against it, `npm run
+smoke:ocr` passed 33 of 33 twice running, `npm run smoke:prod` 24 of 24, and
+`node scripts/prod-smoke/backup.mjs` 14 of 14. The builder did not run it.
+
 **`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
 and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
 output. Another `pdfluffer.exe` dev instance was already running (started 19:14 by a
@@ -544,6 +550,65 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
       user's 300 dpi scans are about 2500 by 3500, so nothing has to be shrunk for them.
       Chip 12 must still read the limit at run time and not lean on this number.
 
+18. **The OCR text layer, proven in the release build** (chip 12, plan P4.5 to P4.9).
+
+    **The op's shape.** The chip offered two. The op carries the engine's raw result and
+    the viewport transform, `{ pageIndex, result: OcrPageResult, transform }`, and
+    `pdfLibAdapter` calls `placeOcrPage` itself. Only the adapter holds Helvetica, and the
+    placement needs the font's own widths and character set, so this keeps the font in one
+    place. The tool never measures text.
+
+    **The baseline constants are unchanged: size 1.1 times the line's median word height,
+    baseline 0.12 times that size above the median word bottom.** No tuning was needed.
+    Every word's origin lands a steady 8.4 pixels above the bottom of its fixture box (at
+    200 dpi, 31 pixel boxes around 28 pixel Arial). That box bottom sits about 6 pixels
+    below Arial's real baseline, so the placed baseline is about 2 pixels above the true one.
+
+    **`npm run smoke:ocr`, 33 of 33, twice running.** Five spread words per page, the four
+    corners of the text block and its centre, in the fixture's picture pixels. Across is
+    against the word's left edge. Down is against the bottom of its box, allowed one height.
+
+    | Page | Where | Word | Across | Down | Height |
+    |---|---|---|---|---|---|
+    | 1, straight | top left | The | 0.0 | -8.4 | 31 |
+    | 1 | top right | PAGE | 1.6 | -8.4 | 31 |
+    | 1 | bottom left | Read | 2.0 | -8.4 | 31 |
+    | 1 | bottom right | here | 1.3 | -8.4 | 31 |
+    | 1 | centre | on | 0.9 | -8.4 | 31 |
+    | 2, turned 2 degrees | top left | The | 0.4 | -10.3 | 32.67 |
+    | 2 | top right | morning | 1.6 | -10.6 | 34.51 |
+    | 2 | bottom left | Read | 2.1 | -10.9 | 33.32 |
+    | 2 | bottom right | here | 1.4 | -8.8 | 32.94 |
+    | 2 | centre | on | 0.6 | -8.9 | 32.07 |
+    | 3, `/Rotate 90` | top left | The | 0.0 | -8.4 | 31 |
+    | 3 | top right | PAGE | 1.6 | -8.4 | 31 |
+    | 3 | bottom left | Read | 2.0 | -8.4 | 31 |
+    | 3 | bottom right | here | 1.3 | -8.4 | 31 |
+    | 3 | centre | on | 0.9 | -8.4 | 31 |
+
+    Over **every** word, not just five: 151 of 151 on each page land right, worst 2.4 pixels
+    across on pages 1 and 3 and 3.1 on page 2. Page 3 gives exactly page 1's numbers, which
+    is the point of it: the same picture on a turned page, placed through the turned page's
+    own viewport. The words are all there as text (100% of 151 each page), the text survives
+    a save and a restart, a second run says "Nothing to read" and adds no second layer, and
+    no console error, CSP violation or native prompt appeared.
+
+    **PDF.js merges a line's words into one text item**, which the chip's check did not
+    expect. On the straight pages it made each whole line one item, so only the 10 line
+    starts had an origin of their own, and the first run's "five spread words" were really
+    the left edge: its "top right" was `The` again. That run passed 30 of 30 and proved too
+    little. So the smoke test now also reads every word's exact origin from PDF.js's own
+    operator list (each `Tm`, then its `Tj`), which measures the whole width of the page,
+    and takes the five spread words from those. It is still PDF.js reading the saved file.
+    The merge itself is good news and is left alone: it is where PDF.js puts the spaces
+    between words, so a copy and paste reads as a sentence.
+
+    Two smoke-test bugs found on the way, both fixed and neither in the app. In PDF.js 6 a
+    `setTextMatrix` op carries its six numbers as one `Float32Array`, so the first reading
+    of the operator list gave `NaN`. And a tab opened by a second launch takes a moment to
+    be ready, while its menu item is disabled, so the test now waits for the item to enable
+    rather than clicking blind. That second one failed once in three runs before the fix.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
@@ -906,11 +971,63 @@ state back, checked afterwards both times it ran.
       the TypeScript types expect. Garbage bytes were rejected with an `ocr: ` string. A
       throwaway script, not committed: chip 12's `ocr.mjs` (P4.9) is the real OCR smoke test.
 
+30. **Small choices chip 12 left open:**
+    - **Check 7 of the smoke test runs on `form-basic.pdf`, not `three-pages.pdf`.** The chip
+      named `three-pages.pdf` as the file with real text, but its pages hold only "Page 1",
+      5 characters each, and O5 reads any page with 50 or fewer. So the tool offers it
+      "3 of 3 pages", as the smoke test now shows and records. `form-basic.pdf` has 62
+      characters of real labels and gets "Nothing to read". See question 1 below.
+    - The confirm says "PDFluffer will read it" for one page and "them" for more, beside
+      the chip's "1 of 1 page has" rule. The rest is the chip's wording exactly.
+    - The closing message names the language, "English (United Kingdom)" in the app, from
+      `Intl.DisplayNames`, falling back to the tag. ICU words it differently in Node
+      ("British English"), so the unit tests pin only that it contains "English".
+    - Its word count is what the engine read. A word Helvetica cannot hold is dropped later,
+      in the adapter, so on a page of mixed scripts the count can be a little high.
+    - A failure names the reason in plain words and always ends "Nothing was changed." For
+      `failed` it adds the engine's own detail, which never holds recognised text.
+    - Cancel in the progress dialog greys out and the line reads "Stopping..." until the
+      page under way is finished, then the dialog closes. It does not close at once, so
+      the user cannot start something else while a page is still being read.
+    - **A mutation check found a real gap in the Cancel rule.** Without the second check
+      after each page, a Cancel pressed during the **last** page still let the operation
+      run, because no next page came round to notice. A test now pins it.
+    - `DocumentSession.pageCount` is kept at every load, including the reload after a
+      rewrite save in `saveFlow.ts`: one bookkeeping line, since a rewrite save can apply
+      page edits from PDF.js's sidebar and change the count.
+    - The page picture's canvas is rounded down to whole pixels and the transform is not
+      rescaled, so a strip under one pixel wide is left off the right and bottom edges.
+    - `'ocr'` came out of the reserved-capabilities list in `engineRegistry.test.ts`: it
+      is no longer reserved for an engine that does not exist.
+    - `scan-three.pdf`'s page 3 is a portrait sheet with `/Rotate 90` and the picture drawn
+      a quarter turn back, so it shows upright, as a scanner does with a sheet fed in
+      sideways. Upright is what matters: then only the page's geometry differs from page 1,
+      and that geometry is what the placement has to cope with. A page that showed sideways
+      would test whether the engine reads sideways text, which is a different question and
+      was not tried.
+
 ## Questions for the user
 
 For the orchestrator.
 
-None open.
+1. **O5 reads a page with a little real text, and adds a second copy of it.** O5 counts a
+   page with 50 or fewer non-space characters as a scan. A cover page, a page with only a
+   heading, or `three-pages.pdf`'s "Page 1" is offered for reading. If the user goes ahead,
+   the engine reads the printed heading too, and the page gains an invisible second copy
+   of text it already had. Nothing looks different, but selecting or searching finds the
+   words twice. This is the spec's rule as written, so it is not changed here. Two ways
+   out, both a design call: skip a page with **any** real text, which would miss a scan
+   that carries a one-line stamp or header in text; or keep O5 but leave out the words
+   that sit where real text already is. The smoke test records the current behaviour.
+
+2. **A risk, reasoned out but not checked live: page edits not yet saved.** In PDF.js's
+   own Pages sidebar the user can delete or reorder pages, and those edits reach the file
+   only when it is exported. The OCR tool numbers pages as the viewer loaded them, but
+   `runOp` exports first and applies the text layer to the exported bytes. If pages were
+   deleted or moved and not saved, the words could land on the wrong pages. Nothing is
+   lost, and Revert to saved undoes it, but it would be quietly wrong. The simple guard is
+   for the tool to ask the user to save first while such edits are pending, which needs
+   one small new `Viewer` method, so it is a design change and is left for a ruling.
 
 ## Known issues
 

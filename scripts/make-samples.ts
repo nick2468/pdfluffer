@@ -1,10 +1,10 @@
 // Generates the test PDFs in samples/ (spec section 14).
 // Run with `npm run samples`. Node 24 runs this file directly by stripping the types.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PDFDocument, StandardFonts, rgb } from "@cantoo/pdf-lib";
+import { degrees, PDFDocument, StandardFonts, rgb } from "@cantoo/pdf-lib";
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), "..", "samples");
 
@@ -90,6 +90,35 @@ async function threePages(): Promise<Uint8Array> {
   return doc.save();
 }
 
+/**
+ * Spec 20, chip 12. A scan: three pages that are each one picture and hold no text at all,
+ * made from the OCR test pictures, whose every word's true position is in samples/ocr/.
+ * Each page is 576 by 432 points, so a 1600 by 1200 picture sits at 200 dpi.
+ *
+ * Page 1 is straight.png. Page 2 is skew-cw2.png, the page turned 2 degrees. Page 3 is
+ * straight.png again on a page with /Rotate 90, drawn turned back a quarter so that it shows
+ * upright, as a scanner does with a sheet it fed in sideways. So page 3 looks like page 1,
+ * and only the page's geometry differs: exactly what the OCR placement has to cope with.
+ */
+async function scanThree(): Promise<Uint8Array> {
+  const doc = await newDoc("Scan three");
+  const picture = (name: string) => readFileSync(join(outDir, "ocr", name));
+  const straight = await doc.embedPng(picture("straight.png"));
+  const skewed = await doc.embedPng(picture("skew-cw2.png"));
+
+  doc.addPage([576, 432]).drawImage(straight, { x: 0, y: 0, width: 576, height: 432 });
+  doc.addPage([576, 432]).drawImage(skewed, { x: 0, y: 0, width: 576, height: 432 });
+
+  // A portrait sheet, shown turned 90 degrees clockwise. The picture is drawn a quarter turn
+  // anticlockwise about its corner, then moved right by the sheet's width, so the two turns
+  // cancel and the picture shows the right way up across the 576 by 432 display.
+  const sideways = doc.addPage([432, 576]);
+  sideways.setRotation(degrees(90));
+  sideways.drawImage(straight, { x: 432, y: 0, width: 576, height: 432, rotate: degrees(90) });
+
+  return doc.save();
+}
+
 function fakeSigned(threePagesBytes: Uint8Array): Uint8Array {
   const tail = new TextEncoder().encode("\n% /ByteRange [0 0 0 0]\n");
   const out = new Uint8Array(threePagesBytes.length + tail.length);
@@ -106,6 +135,7 @@ async function main(): Promise<void> {
     ["flat-form.pdf", await flatForm()],
     ["three-pages.pdf", three],
     ["fake-signed.pdf", fakeSigned(three)],
+    ["scan-three.pdf", await scanThree()],
   ];
   for (const [name, bytes] of files) {
     writeFileSync(join(outDir, name), bytes);

@@ -10,7 +10,8 @@
     "check": "tsc --noEmit && vitest run",
     "samples": "node scripts/make-samples.ts",
     "tauri": "tauri",
-    "smoke:prod": "node scripts/prod-smoke/run.mjs"
+    "smoke:prod": "node scripts/prod-smoke/run.mjs",
+    "smoke:ocr": "node scripts/prod-smoke/ocr.mjs"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "2.11.1",
