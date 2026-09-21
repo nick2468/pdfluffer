@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TabSnapshot } from "../session/DocumentSession";
 import { isReloadKey, shortcutFor } from "../viewer/shortcutFor";
 import ChoiceDialog from "./ChoiceDialog";
+import SavedSignaturesDialog from "./SavedSignaturesDialog";
 import SettingsDialog from "./SettingsDialog";
 import TabBar from "./TabBar";
 import { useServices, useSession } from "./services";
@@ -13,6 +14,7 @@ export default function App() {
   const { manager } = useServices();
   const { tabs, activeTabId } = useSession(manager);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [signaturesOpen, setSignaturesOpen] = useState(false);
   const active = tabs.find((t) => t.id === activeTabId);
 
   const hostRef = useCallback((el: HTMLDivElement | null) => manager.setViewerHost(el), [manager]);
@@ -38,7 +40,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <TabBar tabs={tabs} activeTabId={activeTabId} onSettings={() => setSettingsOpen(true)} />
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSettings={() => setSettingsOpen(true)}
+        onSavedSignatures={() => setSignaturesOpen(true)}
+      />
       {showBanner && (
         <div className="banner" role="status">
           <span>
@@ -54,6 +61,7 @@ export default function App() {
       </main>
       <ChoiceDialog />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SavedSignaturesDialog open={signaturesOpen} onClose={() => setSignaturesOpen(false)} />
     </div>
   );
 }

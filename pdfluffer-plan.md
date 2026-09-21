@@ -64,7 +64,7 @@ The user ran the short list in `docs/user-checks-final.md`. Everything passed ex
 points below. P2.10 and P2.11 stay open until the user runs F16.
 
 - [x] P3.1 `savedSignatures.ts`: parse and rename PDF.js's saved signatures, with tests (spec 11.8)
-- [ ] P3.2 The **Saved signatures...** dialog and its menu item (spec 11.8)
+- [x] P3.2 The **Saved signatures...** dialog and its menu item (spec 11.8)
 - [ ] P3.3 Clearer Flatten dialog wording (spec 13.5)
 - [ ] P3.4 Harness checks for P3.1 to P3.3, `npm run check`, a fresh installer, `npm run smoke:prod`
 - [ ] P3.5 **USER** Rename a saved signature, and run F16 (flatten, then Acrobat, Chrome and Edge)

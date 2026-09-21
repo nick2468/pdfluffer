@@ -10,7 +10,10 @@ import { useServices, useSession } from "./services";
 
 const PDFJS_VERSION = "6.3.289";
 
-export default function AppMenu({ active, onSettings }: { active: TabSnapshot | undefined; onSettings: () => void }) {
+export default function AppMenu(
+  { active, onSettings, onSavedSignatures }:
+  { active: TabSnapshot | undefined; onSettings: () => void; onSavedSignatures: () => void },
+) {
   const { manager, dialogs, files, engines, tools } = useServices();
   const { recent } = useSession(manager);
   // Spec 13.2: only the tools some engine can serve. The registries never change.
@@ -107,6 +110,7 @@ export default function AppMenu({ active, onSettings }: { active: TabSnapshot | 
           ))}
           <Item label="Revert to saved" disabled={!ready || !active?.dirty} onClick={run(() => active && manager.revert(active.id))} />
           <hr />
+          <Item label="Saved signatures..." onClick={run(onSavedSignatures)} />
           <Item label="Settings..." onClick={run(onSettings)} />
           <Item label="Clear history..." onClick={run(clearHistory)} />
           <Item label="About PDFluffer" onClick={run(() => ask(aboutDialog(appVersion, PDFJS_VERSION)))} />

@@ -427,3 +427,60 @@ button:focus-visible, .tab:focus-visible {
   gap: 8px;
   margin: 4px 0 18px;
 }
+
+/* Saved signatures (spec 11.8). One row per signature: its place, its name, Rename. */
+
+.signatures-dialog { width: min(560px, calc(100vw - 32px)); }
+
+.signatures-dialog .dialog-buttons { margin-top: 18px; }
+
+.signature-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.signature-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.signature-number {
+  width: 16px;
+  flex: none;
+  color: var(--muted);
+  text-align: right;
+}
+
+.signature-name {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.signature-row button {
+  flex: none;
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--tab-active);
+}
+
+.signature-row button:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.signature-error {
+  flex-basis: 100%;
+  margin: 0 0 0 24px;
+  color: var(--danger);
+}

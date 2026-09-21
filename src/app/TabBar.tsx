@@ -12,6 +12,7 @@ export default function TabBar(props: {
   tabs: TabSnapshot[];
   activeTabId: string | null;
   onSettings: () => void;
+  onSavedSignatures: () => void;
 }) {
   const { manager } = useServices();
   const active = props.tabs.find((t) => t.id === props.activeTabId);
@@ -41,7 +42,7 @@ export default function TabBar(props: {
       >
         Save
       </button>
-      <AppMenu active={active} onSettings={props.onSettings} />
+      <AppMenu active={active} onSettings={props.onSettings} onSavedSignatures={props.onSavedSignatures} />
     </header>
   );
 }
