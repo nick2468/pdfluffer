@@ -69,3 +69,16 @@ and P3.5 as well.
 - [x] P3.3 Clearer Flatten dialog wording (spec 13.5)
 - [x] P3.4 Harness checks for P3.1 to P3.3, `npm run check`, a fresh installer, `npm run smoke:prod`
 - [x] P3.5 **USER** Rename a saved signature, and run F16 (flatten, then Acrobat, Chrome and Edge)
+
+## Phase 4 - OCR (spec 20, added 2026-09-21)
+
+- [ ] P4.1 Test pictures with known word positions: straight, skewed both ways, and one too large (chip 11)
+- [ ] P4.2 Rust: `ocr_status` and `ocr_image` with `cargo test` against the test pictures (spec 20.3)
+- [ ] P4.3 Settle, with evidence, how `TextAngle` and `BoundingRect` map back onto a skewed picture (spec 20.2)
+- [ ] P4.4 `OcrService`, `fakeOcrService`, `tauriOcrService` (spec 20.4)
+- [ ] P4.5 `Viewer.renderPageImage` and `pageTextLength` (spec 20.4)
+- [ ] P4.6 `placement.ts` with tests, using what P4.3 found
+- [ ] P4.7 `ocr.addTextLayer` in `pdfLibAdapter`, with tests
+- [ ] P4.8 The tool, the confirm, the progress dialog with Cancel, the closing message (spec 20.5)
+- [ ] P4.9 `scripts/prod-smoke/ocr.mjs`: OCR a scanned sample in the release build and check the words and their positions
+- [ ] P4.10 **USER** OCR a real scan, select and copy text, check it in another viewer

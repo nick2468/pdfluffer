@@ -78,7 +78,8 @@ Do not build these, even if they look easy. Several are planned for later specs.
 3. Editing existing text or images in a PDF.
 4. Certificate-based digital signing or signature verification. Version 1 only **detects**
    a digital signature (section 12.4).
-5. OCR. Converting to Word, Excel or images. Compress. Redaction. Passwords on save.
+5. Converting to Word, Excel or images. Compress. Redaction. Passwords on save.
+   (OCR left this list on 2026-09-21. It is section 20.)
 6. Quick marks (tick, cross, date, initials) and underline, strikeout and sticky notes.
    They need deep PDF.js internals. They get their own spec after version 1 is in daily use.
 7. Undo for phase 2 operations. "Revert to saved" is the only safety net (section 13.6).
@@ -144,7 +145,8 @@ TypeScript, `@vitejs/plugin-react`), keep the version the scaffold chose.
 
 Rust crates: `tauri`, `tauri-build`, `tauri-plugin-single-instance`,
 `tauri-plugin-dialog`, `tauri-plugin-store`, `tauri-plugin-window-state`,
-`tauri-plugin-opener`, `serde`, `serde_json`, `dunce`, `percent-encoding`.
+`tauri-plugin-opener`, `serde`, `serde_json`, `dunce`, `percent-encoding`, and from
+phase 4 the `windows` crate at the version already in `Cargo.lock` (section 20.3).
 
 **No other dependency may be added.** If you believe one is needed, follow the escalation
 rule. Do not use the `pdfjs-dist` npm package. It does not contain the viewer app.
@@ -1179,3 +1181,105 @@ Do not try to fix these. They are recorded so nobody mistakes them for bugs.
 5. Saved signatures live in the WebView2 profile's localStorage (F9), at most five.
 6. The custom Rust commands can read and write any `.pdf` path the Windows user can reach.
    That is acceptable for a personal tool whose page loads no remote content (D12).
+
+## 20. OCR: make a scanned PDF's text selectable (phase 4, added 2026-09-21)
+
+The user ruled on 2026-09-21 that OCR is wanted (concept decision 5). OCR, optical character
+recognition, reads the words in a picture of a page. A scanned PDF is only pictures, so
+nothing in it can be selected, copied or searched. PDFluffer adds an **invisible text
+layer** over each scanned page. The page looks exactly the same. Logos, rubber stamps and
+signatures are never touched, because the picture is never changed.
+
+### 20.1 Settled decisions
+
+| # | Decision | Why |
+|---|---|---|
+| O1 | The engine is **Windows' built-in OCR**, `Windows.Media.Ocr`, called from the Rust host | It is already on the machine, works offline, and adds nothing to the installer. Tesseract would add about 15 MB of language data and, by default, fetches it from a CDN, which D12 forbids |
+| O2 | The page picture comes from **PDF.js rendering the page**, not from pulling the JPEG out of the file | It works for any PDF, whatever is inside it, and it matches what the user sees |
+| O3 | The words are written with **pdf-lib**, as text in rendering mode 3 (invisible), in the standard Helvetica font | No font file to embed. Invisible text needs no matching typeface. Limit: Latin text only (20.6) |
+| O4 | The result goes through `SessionManager.runOp`, like every Document tool | The digital-signature guard, the dirty flag, Revert and "nothing reaches disk until Save" all come for free |
+| O5 | A page that already holds more than 50 non-space characters of text is **skipped** | It is not a scan, or it was already done. This also stops a second run stacking a second layer |
+| O6 | Recognition lives behind a small `OcrService` interface | Tests use a fake. The browser harness has none, so the tool is simply absent there. A later engine can replace it |
+
+### 20.2 Facts checked at Microsoft's documentation on 2026-09-21
+
+- `OcrEngine.RecognizeAsync(SoftwareBitmap)` returns an `OcrResult` with `Lines`, each with
+  `Words`, each with `Text` and a `BoundingRect` in pixels.
+- `OcrEngine.MaxImageDimension` is the largest width or height the engine accepts. Read it
+  at run time. The page picture must fit inside it.
+- `OcrResult.TextAngle` is "the clockwise rotation of the recognized text, in degrees,
+  around the center of the image". It can be null.
+- `OcrWord.BoundingRect` is measured "from the top left corner of image when the value of
+  TextAngle property is 0", and when `TextAngle` is not null the values "are calculated
+  from the rotated image". So on a skewed scan **the rectangles describe the straightened
+  picture, and must be rotated back onto the real page.** The documentation does not show
+  which way. Chip 11 settles that with test pictures before any placement code exists.
+- `TryCreateFromUserProfileLanguages()` can return null when no installed language pack has
+  OCR. `AvailableRecognizerLanguages` lists what the machine has.
+
+### 20.3 The Rust side
+
+One new command and one new dependency, the `windows` crate, **at the version already in
+`Cargo.lock`** (Tauri depends on it), with only the features this needs.
+
+```
+ocr_image(request: tauri::ipc::Request) -> Result<OcrPageResult, String>    // async
+ocr_status() -> OcrStatus
+```
+
+`ocr_image` takes an encoded picture (JPEG or PNG) as the raw request body. It decodes it
+with `Windows.Graphics.Imaging.BitmapDecoder`, converts to a format the engine accepts,
+and returns:
+
+```ts
+interface OcrPageResult {
+  language: string;            // the recogniser's BCP-47 tag, for example "en-GB"
+  width: number; height: number;   // the decoded picture, in pixels
+  textAngle: number | null;
+  lines: { words: { text: string; x: number; y: number; w: number; h: number }[] }[];
+}
+interface OcrStatus { available: boolean; language: string | null; maxImageDimension: number; }
+```
+
+Engine choice: `TryCreateFromUserProfileLanguages()` first. If that is null, the first entry
+of `AvailableRecognizerLanguages` whose tag starts with `en`, else the first entry, else
+`available: false`. Errors are strings: `ocr-unavailable`, `ocr-too-large`, `ocr: <detail>`.
+
+### 20.4 The TypeScript side
+
+- `src/ocr/OcrService.ts`: `interface OcrService { status(): Promise<OcrStatus>;
+  recognise(image: Uint8Array): Promise<OcrPageResult>; }`, plus `fakeOcrService.ts`.
+  `src/ocr/tauriOcrService.ts` calls the two commands. **It is the second and last file
+  allowed to import `@tauri-apps`.**
+- `Viewer` gains `renderPageImage(page, maxDimension)` returning the JPEG bytes, the pixel
+  size, the page's box in points and its rotation, and `pageTextLength(page)`. Both are
+  PDF.js work, so both live in `PdfJsViewer.ts` (D7).
+- `src/ocr/placement.ts`, pure and unit tested: from one word's rectangle, the picture
+  size, `textAngle`, the page box and the page rotation, to the PDF text matrix, the font
+  size and the horizontal scale that make invisible Helvetica text cover that word.
+- `EngineOp` gains `{ kind: 'ocr.addTextLayer'; pages: OcrPagePlacement[] }`, capability
+  `'ocr'`, implemented in `pdfLibAdapter.ts`. Mode `rewrite`.
+- The tool **Make text selectable (OCR)...** sits in the Document list. It is offered only
+  when an adapter has `'ocr'` **and** `OcrService.status()` says available.
+
+### 20.5 The user's flow
+
+1. The tool counts pages without text (O5). None: "Every page already has selectable
+   text." and stop.
+2. Confirm: "N of M pages have no selectable text. PDFluffer will read them and add an
+   invisible text layer. The pages will look exactly the same. This can take a few seconds a
+   page." Buttons **Make selectable** and **Cancel**.
+3. A progress dialog: "Reading page 2 of 4...", with **Cancel**. Cancel changes nothing.
+4. One `runOp` adds every page's layer at once. The tab is now unsaved. A closing message
+   says how many pages and words were added, and in which language.
+5. The user checks by selecting text, then saves. Revert to saved undoes it.
+
+### 20.6 Known limits, accepted
+
+1. Print only. Handwriting and signatures give nothing, or a few stray characters.
+2. Latin text only. A character Helvetica's WinAnsi encoding cannot hold is dropped.
+3. Overlapping stamps and single digits in ruled boxes can read wrongly. The layer is
+   invisible, so a wrong word only shows when copied or searched.
+4. No language picker. The engine follows the Windows language packs that are installed.
+5. The picture is never straightened, cleaned or compressed. OCR adds text and nothing else.
+6. Windows only, and only in the desktop app.

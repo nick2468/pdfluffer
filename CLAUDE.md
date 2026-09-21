@@ -19,6 +19,8 @@ iframe per tab.
   `PDFViewerApplication`, or reach inside the iframe. One named exception:
   `src/viewer/savedSignatures.ts` is the only file that may read or write PDF.js's
   `pdfjs.signature` localStorage entry (spec 11.8).
+- **Only two files may import `@tauri-apps`:** `src/files/tauriFileAdapter.ts` and, from
+  phase 4, `src/ocr/tauriOcrService.ts`. Nothing else in `src/` may know Tauri exists.
 - **No network.** No CDN links, web fonts, analytics, update checks or remote fetches.
 - **No new dependencies** beyond spec section 5. Do not change a pinned version.
 - **The builder installs no toolchain.** Rust 1.98 is at `%USERPROFILE%\.cargo\bin` and is

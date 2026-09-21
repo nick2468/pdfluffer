@@ -408,7 +408,7 @@ business model unclear).
 | 2 | Desktop shell | **Tauri 2** | Section 7. Needs the Rust toolchain and the Microsoft C++ build tools |
 | 3 | Skip "edit existing text"? | **Yes, but the design must permit adding it later without much friction** | Seams 1 to 3 (section 5.1). Fold-in path in section 5.2 |
 | 4 | XFA forms or certificate-based signatures? | **Occasionally. No example file yet. Must fold in later without a big refactor** | XFA switch and banner in version 1. Two-mode save path and signed-file guard in version 1. Fold-in paths in section 5.2 |
-| 5 | Copy text from scanned PDFs (OCR)? | **Not decided** | Stays on the Could list. No design impact either way (section 5.2) |
+| 5 | Copy text from scanned PDFs (OCR)? | **Yes**, ruled 2026-09-21 after desktop version 1 was finished | Spec section 20, with Windows' built-in OCR. It plugs into the `ocr` capability as section 5.2 planned, with no refactor |
 | 6 | Which browsers for the extension? | **Chrome and Edge** | One Manifest V3 build covers both |
 | 7 | New requirement | **Persist the open files when the tool reopens** | Section 5.3. In the Must list |
 | 8 | New constraint | **No new browser to install** | Section 8 |
