@@ -503,6 +503,14 @@ the U4 decision rule was not needed.**
 2. **F16 was not run**, because "flatten" was jargon to the user. The user ruled that the
    menu name stays **Flatten...**, and the dialog gets plainer wording (spec 13.5).
 
+**The user's second test pass, 2026-09-21, after chip 10.** The user ran the two checks
+chip 10 added and reported "Both checks passed my testing". So **F19** passes: a saved
+signature renames in the installed app, the signature tool shows the new name, and it is
+still there after a restart. **F20** passes, which is **F16** run with the new wording: a
+flattened signed form looks right in Acrobat, Chrome and Edge. That closes plan items
+**P2.10** and **P3.5**, and it is the second time the rename path has been proven, this
+time in the real app rather than a harness browser.
+
 A harness note for whoever automates the viewer next: after a `Page.reload` in headless
 Edge, PDF.js's editor buttons stayed disabled, so a scripted `.click()` on them did nothing.
 Dispatching `switchannotationeditormode` on the viewer's event bus with mode 101 opened the

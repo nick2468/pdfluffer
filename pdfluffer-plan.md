@@ -55,16 +55,17 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P2.7 The four tools and the Document submenu (spec 13.5)
 - [x] P2.8 Revert to saved. The backup setting, end to end (spec 13.6)
 - [x] P2.9 Harness check H11 passes. `npm run check` passes. Commit
-- [ ] P2.10 **USER** A flattened, signed form looks right in Acrobat, Chrome and Edge
+- [x] P2.10 **USER** A flattened, signed form looks right in Acrobat, Chrome and Edge
 - [ ] P2.11 Phase 2 acceptance criteria met (spec 17)
 
 ## Phase 3 - fixes after the first user test (2026-09-21)
 
 The user ran the short list in `docs/user-checks-final.md`. Everything passed except the
-points below. P2.10 and P2.11 stay open until the user runs F16.
+points below. The user ran F19 and F20 on 2026-09-21 and both passed, which closed P2.10
+and P3.5 as well.
 
 - [x] P3.1 `savedSignatures.ts`: parse and rename PDF.js's saved signatures, with tests (spec 11.8)
 - [x] P3.2 The **Saved signatures...** dialog and its menu item (spec 11.8)
 - [x] P3.3 Clearer Flatten dialog wording (spec 13.5)
 - [x] P3.4 Harness checks for P3.1 to P3.3, `npm run check`, a fresh installer, `npm run smoke:prod`
-- [ ] P3.5 **USER** Rename a saved signature, and run F16 (flatten, then Acrobat, Chrome and Edge)
+- [x] P3.5 **USER** Rename a saved signature, and run F16 (flatten, then Acrobat, Chrome and Edge)

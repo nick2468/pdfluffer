@@ -423,8 +423,8 @@ Run **F16** above, exactly as it is written. Its steps have not changed.
 | F13 | A file that moved, and Locate | | |
 | F14 | Copy and paste text | pass | User, 2026-09-21 |
 | F15 | The Document tools and the backup | | |
-| F16 | Flattening a signed form | not run | The user did not know what flatten meant. Explained 2026-09-21. To run after chip 10 |
+| F16 | Flattening a signed form | pass | User, 2026-09-21, as F20 after the wording was explained |
 | F17 | No security-policy errors | pass | Proven by automation, 2026-09-21 |
 | F18 | How it looks and feels | no issues raised | User, 2026-09-21: "All are working" |
-| F19 | Renaming a saved signature | | |
-| F20 | Flattening, with the word explained | | Same steps as F16 |
+| F19 | Renaming a saved signature | pass | User, 2026-09-21 |
+| F20 | Flattening, with the word explained | pass | User, 2026-09-21. Same steps as F16 |
