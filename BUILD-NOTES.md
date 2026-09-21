@@ -453,6 +453,90 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     The throwaway profile also keeps the promise the chip makes: the installed app's saved
     signatures were never read or changed. Its profile directory was deleted afterwards.
 
+16. **How a skewed page's word boxes map back onto the picture** (chip 11, plan P4.3).
+    This was the point of the chip. Microsoft says `TextAngle` is "the clockwise rotation
+    of the recognized text, in degrees, around the center of the image" and that on a
+    skewed picture each `BoundingRect` is "calculated from the rotated image", but it does
+    not say which way to turn the rectangles back. Settled here with measurement.
+
+    The two test pictures hold the same page turned two degrees each way about the
+    picture's centre, and every word's true centre was measured in the browser, not
+    calculated (plan P4.1). Both were read at 1600 by 1200.
+
+    **The engine's angle follows the page, sign and all.**
+
+    | Picture | The page is turned | `text_angle` the engine reported |
+    |---|---|---|
+    | `skew-cw2.png` | 2 degrees clockwise | **+2.000** |
+    | `skew-ccw2.png` | 2 degrees anticlockwise | **-2.100** |
+
+    **Five words spread across `skew-cw2.png`,** in picture pixels. The reported centre is
+    where the engine says the word is, the true centre is where it really is.
+
+    | Word | Reported centre | True centre |
+    |---|---|---|
+    | The (top left) | 144.0, 135.0 | 160.7, 112.9 |
+    | morning (top right) | 1050.0, 138.0 | 1066.1, 144.5 |
+    | Read (bottom left) | 153.5, 1071.0 | 137.4, 1048.7 |
+    | here (bottom right) | 1152.0, 1071.5 | 1135.4, 1083.5 |
+    | on (middle) | 812.5, 554.0 | 814.4, 552.0 |
+
+    **The same five on `skew-ccw2.png`,** where every error points the other way.
+
+    | Word | Reported centre | True centre |
+    |---|---|---|
+    | The (top left) | 145.0, 134.0 | 128.3, 158.7 |
+    | PAGE (top right) | 1369.5, 448.0 | 1363.2, 427.7 |
+    | Read (bottom left) | 153.0, 1070.0 | 170.3, 1093.8 |
+    | here (bottom right) | 1151.0, 1071.5 | 1168.3, 1058.9 |
+    | on (middle) | 812.5, 553.5 | 811.0, 551.1 |
+
+    Note the middle word: it is within two pixels in both pictures while the corners are
+    twenty or more out. That is the signature of a rotation about the centre, and it is why
+    the fixture lines run nearly the full width of the page.
+
+    **The four candidates, over all 151 words of each picture.** One wins outright.
+
+    | Candidate | `skew-cw2` | `skew-ccw2` |
+    |---|---|---|
+    | **Turn by `+text_angle` about the centre** | **100.0% within 12 px, worst 5.5** | **100.0% within 12 px, worst 5.6** |
+    | Turn by `-text_angle` about the centre | 10.6%, worst 55.8 | 7.9%, worst 59.2 |
+    | Leave it where it is | 34.4%, worst 28.3 | 31.1%, worst 29.8 |
+    | Turn by `+text_angle` about the top left | 0.0%, worst 39.7 | 0.0%, worst 38.0 |
+    | Turn by `-text_angle` about the top left | 7.3%, worst 75.1 | 7.3%, worst 78.8 |
+
+    **The rule.** With y pointing down, `a` the reported `text_angle` in degrees, and
+    `(cx, cy)` the centre of the decoded picture, a reported point `(x, y)` sits at:
+
+    ```
+    cx + (x - cx) * cos(a) - (y - cy) * sin(a)
+    cy + (x - cx) * sin(a) + (y - cy) * cos(a)
+    ```
+
+    In plain words: **turn the reported position clockwise by the reported angle, about the
+    middle of the picture.** The engine straightens the picture before it measures, turning
+    it anticlockwise by the angle it reports, so putting a word back over the real page
+    means turning it clockwise by that same angle. A positive `text_angle` turns the word
+    clockwise, a negative one anticlockwise, and no code has to know which way the page was
+    skewed.
+
+    `recognise` does **not** apply this. It returns exactly what the engine gave, and chip
+    12 maps in TypeScript, where the page box and the page rotation live. The rule is held
+    in place by `the_skew_rule_puts_the_words_back_over_the_page`, which fails at 10.6% if
+    the sign is flipped, checked. `skew_table` prints the tables above again on demand:
+    `cargo test skew_table -- --nocapture`.
+
+17. **Three facts about Windows OCR on this machine** (chip 11), each one that could have
+    cost an afternoon.
+    - **It needs no apartment initialisation.** The chip allowed for a `CoInitialize` error
+      and none came: `IAsyncOperation::get()` works straight from a cargo test thread and
+      from Tauri's async command thread. No `CoIncrementMTAUsage`, no `RoInitialize`.
+    - **It is fast.** A 1600 by 1200 page with 151 words takes about 0.05 s, so all six
+      OCR tests together run in 0.2 s. No test needed a longer timeout.
+    - **`MaxImageDimension` is 10000 here**, not the smaller number the chip expected. The
+      user's 300 dpi scans are about 2500 by 3500, so nothing has to be shrunk for them.
+      Chip 12 must still read the limit at run time and not lean on this number.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
