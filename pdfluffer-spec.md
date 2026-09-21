@@ -59,7 +59,7 @@ Do not reopen these. The "why" is here so you can apply them to cases this spec 
 | D4 | PDF engine is **PDF.js**, the full viewer app, hosted unmodified in an iframe per tab | Every tool works on day one, including the signature dialog. Lowest risk |
 | D5 | Keep PDF.js's own toolbar. Hide only its Open and Download buttons | User ruling 2026-09-19. A custom toolbar can come later behind the same interface |
 | D6 | **Never edit any file under `public/pdfjs/`** | Upgrades stay a folder swap. All customising is done from outside (section 9) |
-| D7 | **Only `src/viewer/PdfJsViewer.ts` may touch PDF.js objects** | PDF.js internals change between versions. One file holds all the risk |
+| D7 | **Only `src/viewer/PdfJsViewer.ts` may touch PDF.js objects.** One named exception, added 2026-09-21: `src/viewer/savedSignatures.ts` is the only file that may read or write PDF.js's `pdfjs.signature` storage (section 11.8) | PDF.js internals change between versions. Everything that knows them lives under `src/viewer/`, in named files |
 | D8 | The **document session** owns the file bytes. The viewer only displays | Lets other engines be added later without a refactor (concept, section 5.1) |
 | D9 | Save asks once per file, then overwrites | User ruling 2026-09-19 (section 12.3) |
 | D10 | The save path knows two modes: `append` and `rewrite` | A rewrite breaks a digital signature. The app must warn first (section 12.4) |
@@ -828,6 +828,31 @@ Ctrl+P, Ctrl+F, Ctrl+Z, Ctrl+C and every other key belong to PDF.js. Do not inte
 
 `<active tab name> - PDFluffer`, with ` *` after the name when dirty. `PDFluffer` with no tabs.
 
+### 11.8 Saved signatures dialog (added 2026-09-21, after the first user test)
+
+PDF.js uses one word, "description", for two jobs. When a signature is created, the
+description becomes both the **name on the saved-signature button** and the alternative
+text of the placed copy. After that, PDF.js's **Edit description** changes only the placed
+copy. PDF.js has no way to rename a saved signature: its storage has create and delete
+only (`viewer.mjs`, `generic_signature_storage.js`). The user expected to rename one, as
+macOS Preview's Manage Signatures allows, so PDFluffer adds that from outside.
+
+- **Storage format (verified at source, 6.3.289):** `localStorage["pdfjs.signature"]` is a
+  JSON object `{ "<uuid>": { "description": string, "signatureData": string } }`, in
+  insertion order, at most 5 entries.
+- **Refresh is free.** Each viewer listens for the `storage` event on that key, clears its
+  cache and redraws its list (`viewer.mjs:3100-3110` and `#signaturesChanged`). The event
+  fires in every same-origin document **except** the one that wrote. The app frame is a
+  different document from the viewer iframes, so a write from the frame refreshes them all.
+- **The dialog**, opened from the app menu item **Saved signatures...**, lists each saved
+  signature in stored order, which is the order of the signature menu, with its name in a
+  text box and a **Rename** button. It changes `description` and nothing else. It shows no
+  preview: `signatureData` is compressed in a PDF.js-private format. It says so, and it
+  says that signatures already placed in a document keep their own text.
+- **Safety:** if the stored value is not exactly the shape above, the dialog says it cannot
+  read the saved signatures and writes nothing. A rename re-reads the storage first, so a
+  signature added or deleted in a viewer meanwhile is never lost.
+
 ## 12. Behaviours
 
 ### 12.1 Opening files
@@ -1036,7 +1061,7 @@ throw `EngineError('encrypted')`.
 | `insertPdf` | Insert PDF at end... | `pickFiles`, read each, run one `pages.insertPdf` per file |
 | `rotateAllRight` / `rotateAllLeft` | Rotate all pages right / left | `pages.rotate` on `all`, 90 or -90 |
 | `rotatePageRight` | Rotate this page right | `pages.rotate` on the current page |
-| `flatten` | Flatten... | Confirm first: "Flatten bakes form values, signatures and notes into the pages. They can no longer be edited. You can still use Revert to saved until you save." |
+| `flatten` | Flatten... | Confirm first. Wording revised 2026-09-21, because the user did not know the term: "Flatten makes every filled-in answer, note and signature a permanent part of the page. Afterwards nobody can edit, move or remove them, including you. Use it before you send a signed form to someone. You can still use Revert to saved until you save." The menu name stays **Flatten...** by the user's ruling |
 
 ### 13.6 Revert and backup
 

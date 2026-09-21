@@ -367,21 +367,21 @@ cheap, so do not hold any back.
 
 | Check | What it covers | Pass or fail | Notes |
 |---|---|---|---|
-| F1 | Installer and first start | | |
+| F1 | Installer and first start | pass | User, 2026-09-21 |
 | F2 | Open, fill, save, reopen | pass | Proven by automation, 2026-09-21 |
-| F3 | Double-click and single window | | |
+| F3 | Double-click and single window | pass | User, 2026-09-21 |
 | F4 | Reopening your tabs | pass | Proven by automation, 2026-09-21 |
 | F5 | Closing with unsaved changes | pass | Proven by automation, 2026-09-21 |
 | F6 | A half-typed note is not lost | | |
-| F7 | Signatures | | |
-| F8 | Saved file in other viewers | | |
-| F9 | Printing | | |
-| F10 | Reordering pages by dragging | | |
-| F11 | Dragging a PDF onto the window | | |
+| F7 | Signatures | pass | User, 2026-09-21. One request: a saved signature cannot be renamed. Fix chip 10 |
+| F8 | Saved file in other viewers | pass | User, 2026-09-21 |
+| F9 | Printing | pass | User, 2026-09-21 |
+| F10 | Reordering pages by dragging | pass | User, 2026-09-21. So `dragDropEnabled` stays true and the U4 decision rule is not needed |
+| F11 | Dragging a PDF onto the window | pass | User, 2026-09-21 |
 | F12 | A file another program holds | | |
 | F13 | A file that moved, and Locate | | |
-| F14 | Copy and paste text | | |
+| F14 | Copy and paste text | pass | User, 2026-09-21 |
 | F15 | The Document tools and the backup | | |
-| F16 | Flattening a signed form | | |
+| F16 | Flattening a signed form | not run | The user did not know what flatten meant. Explained 2026-09-21. To run after chip 10 |
 | F17 | No security-policy errors | pass | Proven by automation, 2026-09-21 |
-| F18 | How it looks and feels | | |
+| F18 | How it looks and feels | no issues raised | User, 2026-09-21: "All are working" |

@@ -444,6 +444,32 @@ embedded assets apply, which `tauri dev` does not exercise:
 Not provable this way, so still USER checks: the installer, the Windows file association,
 window focus, native dialogs, printing, real drag and drop, other PDF viewers, and looks.
 
+**The user's first test pass, 2026-09-21.** The user ran the short list in the installed
+app and reported "All are working", with two exceptions. So F1, F3, F7, F8, F9, F10, F11
+and F14 pass, no looks-and-feel issue was raised, plan items P1.14, P1.20 and P1.21 are
+ticked, and because page thumbnails drag correctly (F10) **`dragDropEnabled` stays true and
+the U4 decision rule was not needed.**
+
+1. **A saved signature cannot be renamed.** The user added a signature from an image, kept
+   the default description (the file name), later used PDF.js's Edit description to change
+   it, and found the saved-signature button still showed the file name. Reproduced by the
+   orchestrator in a throwaway headless Edge profile against the harness: Edit description
+   changes the placed copy only (`aria-description` and the edit button's title both
+   change), while the saved button's label and `localStorage["pdfjs.signature"]` keep the
+   original. It is PDF.js's design, the same in Firefox: the storage has create and delete
+   only. Everything else about descriptions works: the label on first save, the label after
+   a reload, and the placed copy. macOS Preview has a Manage Signatures screen, so the
+   user's expectation is reasonable. **Fix: spec 11.8 and chip 10**, done from outside
+   PDF.js by rewriting one field of its storage entry, which makes every open viewer
+   redraw its list through the `storage` event.
+2. **F16 was not run**, because "flatten" was jargon to the user. The user ruled that the
+   menu name stays **Flatten...**, and the dialog gets plainer wording (spec 13.5).
+
+A harness note for whoever automates the viewer next: after a `Page.reload` in headless
+Edge, PDF.js's editor buttons stayed disabled, so a scripted `.click()` on them did nothing.
+Dispatching `switchannotationeditormode` on the viewer's event bus with mode 101 opened the
+signature tool. `Input.insertText` also needs the page focused (`Page.bringToFront`).
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and

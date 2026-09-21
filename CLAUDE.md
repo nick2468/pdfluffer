@@ -16,7 +16,9 @@ iframe per tab.
 - **Never edit anything under `public/pdfjs/`.** It is vendored PDF.js. Customise it only
   from outside, as spec section 9 describes.
 - **Only `src/viewer/PdfJsViewer.ts` may touch PDF.js objects** such as
-  `PDFViewerApplication`, or reach inside the iframe.
+  `PDFViewerApplication`, or reach inside the iframe. One named exception:
+  `src/viewer/savedSignatures.ts` is the only file that may read or write PDF.js's
+  `pdfjs.signature` localStorage entry (spec 11.8).
 - **No network.** No CDN links, web fonts, analytics, update checks or remote fetches.
 - **No new dependencies** beyond spec section 5. Do not change a pinned version.
 - **The builder installs no toolchain.** Rust 1.98 is at `%USERPROFILE%\.cargo\bin` and is

@@ -35,14 +35,14 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P1.11 App menu, Recent list, Settings, Clear history, About (spec 11.3, 11.5)
 - [x] P1.12 Keyboard shortcuts from both the parent window and the iframe. Window title (spec 11.6, 11.7)
 - [x] P1.13 XFA banner, Signed chip, signature guard dialog, external link dialog (spec 12.4, 12.7, 12.8)
-- [ ] P1.14 Remove the spike page. Harness checks H1 to H10 pass (spec 16)
+- [x] P1.14 Remove the spike page. Harness checks H1 to H10 pass (spec 16)
 - [x] P1.15 Rust: `parse_pdf_args` with `cargo test` (spec 10.4, 15.8)
 - [x] P1.16 Rust: the four commands, the atomic write, single instance, pending files (spec 10.3, 10.4)
 - [x] P1.17 `tauriFileAdapter.ts`: dialogs, read, write, state, open requests, drag and drop, close request, title, external links (spec 10.3-10.5)
 - [x] P1.18 `npm run check` and `cargo test` pass. Commit
 - [x] P1.19 Give the user the USER checks U1 to U11 with exact steps (spec 16)
-- [ ] P1.20 **USER** U1 to U11 pass. Apply the U4 decision rule if needed
-- [ ] P1.21 Phase 1 acceptance criteria met (spec 17)
+- [x] P1.20 **USER** U1 to U11 pass. Apply the U4 decision rule if needed
+- [x] P1.21 Phase 1 acceptance criteria met (spec 17)
 
 ## Phase 2 - engine adapter and document tools
 
@@ -57,3 +57,14 @@ The builder ticks a box when the item is done **and checked**. Section numbers p
 - [x] P2.9 Harness check H11 passes. `npm run check` passes. Commit
 - [ ] P2.10 **USER** A flattened, signed form looks right in Acrobat, Chrome and Edge
 - [ ] P2.11 Phase 2 acceptance criteria met (spec 17)
+
+## Phase 3 - fixes after the first user test (2026-09-21)
+
+The user ran the short list in `docs/user-checks-final.md`. Everything passed except the
+points below. P2.10 and P2.11 stay open until the user runs F16.
+
+- [ ] P3.1 `savedSignatures.ts`: parse and rename PDF.js's saved signatures, with tests (spec 11.8)
+- [ ] P3.2 The **Saved signatures...** dialog and its menu item (spec 11.8)
+- [ ] P3.3 Clearer Flatten dialog wording (spec 13.5)
+- [ ] P3.4 Harness checks for P3.1 to P3.3, `npm run check`, a fresh installer, `npm run smoke:prod`
+- [ ] P3.5 **USER** Rename a saved signature, and run F16 (flatten, then Acrobat, Chrome and Edge)
