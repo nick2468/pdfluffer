@@ -534,6 +534,8 @@ new leg in a trusted 24 of 24 test is a bad place to take a risk. Same safety: i
 to run while PDFluffer is open, works on copies in a temp folder, and puts the user's own
 state back, checked afterwards both times it ran.
 
+**Insert PDF in the installed app, 2026-09-21.** The user ran F15: Insert PDF at end through the native Open dialog, save, reopen. It passed. It was the last feature never run in the installed app, so **no check is open for desktop version 1.**
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and

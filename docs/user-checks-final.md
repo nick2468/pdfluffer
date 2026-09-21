@@ -423,7 +423,7 @@ Run **F16** above, exactly as it is written. Its steps have not changed.
 | F12 | A file another program holds | | |
 | F13 | A file that moved, and Locate | | |
 | F14 | Copy and paste text | pass | User, 2026-09-21 |
-| F15 | The Document tools and the backup | part proven | Backup setting proven by automation, 2026-09-21. Inserting a PDF is the only part left |
+| F15 | The Document tools and the backup | pass | Backup proven by automation. Inserting a PDF passed in the installed app: user, 2026-09-21 |
 | F16 | Flattening a signed form | pass | User, 2026-09-21, as F20 after the wording was explained |
 | F17 | No security-policy errors | pass | Proven by automation, 2026-09-21 |
 | F18 | How it looks and feels | no issues raised | User, 2026-09-21: "All are working" |
