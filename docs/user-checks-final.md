@@ -32,8 +32,12 @@ there to fill in. Plan items P1.20, P2.10 and P2.11 are ticked when these pass.
 | F16 Flattening a signed form | The builder compared before and after in PDF.js. Other viewers cannot be automated | **Yours** |
 | F17 No security-policy errors | **Proven** in the production build: none, across open, fill, save, tools, revert and close | Nothing, if F7 and F9 pass in the installed app |
 | F18 How it looks and feels | Only you can judge | **Yours.** The most useful one |
+| F19 Renaming a saved signature | New on 2026-09-21. The builder ran it in a browser | **Yours** in the installed app |
+| F20 Flattening, with the word explained | Same as F16 | **Yours** |
 
 **The short list, about 25 minutes: F1, F3, F7, F8, F9, F10, F11, F14, F16, F18.**
+
+**Since your first pass, two more: F19 and F20, near the end. About five minutes.**
 
 To rerun the automated test yourself at any time, close PDFluffer and run
 `npm.cmd run smoke:prod`. It takes about a minute, opens and closes the app a few times,
@@ -363,6 +367,43 @@ cheap, so do not hold any back.
 
 ---
 
+## After chip 10 - two checks
+
+Two small things changed on 2026-09-21, after your first pass. Please check both in the
+**installed** app.
+
+### F19 - rename a saved signature
+
+PDF.js names a saved signature when you create it and never again. Its own **Edit
+description** changes only the copy sitting in the document, which is what you found. The
+menu now has a way to rename the saved one.
+
+1. Open any PDF. Use the signature tool to create a signature, leave "Save signature"
+   ticked, and place it.
+2. Open the menu and choose **Saved signatures...**. Your signature is listed by its name.
+3. Type a new name in the box and choose **Rename**, or press Enter. Close the dialog.
+4. Open the signature tool again in the **same** tab, without restarting anything. The
+   button should show the new name.
+5. Close PDFluffer, start it again, open a PDF, and look at the signature tool once more.
+
+**Expect:** the new name in step 4 and again in step 5. The signature you already placed
+in step 1 keeps its own old text, and that is meant to happen: renaming the saved one
+never reaches into a document you have already signed.
+
+**If it fails:** say which step, what the button said, and what you typed.
+
+### F20 - flattening a signed form, now that the word is explained
+
+Flatten means: make everything you have filled in, written or signed a permanent part of
+the page, so nobody can edit, move or remove it afterwards, including you. It is what you
+do to a signed form before you send it. The dialog now says this in the app.
+
+Run **F16** above, exactly as it is written. Its steps have not changed.
+
+**Expect:** what F16 says to expect.
+
+**If it fails:** what F16 says to report.
+
 ## Results
 
 | Check | What it covers | Pass or fail | Notes |
@@ -385,3 +426,5 @@ cheap, so do not hold any back.
 | F16 | Flattening a signed form | not run | The user did not know what flatten meant. Explained 2026-09-21. To run after chip 10 |
 | F17 | No security-policy errors | pass | Proven by automation, 2026-09-21 |
 | F18 | How it looks and feels | no issues raised | User, 2026-09-21: "All are working" |
+| F19 | Renaming a saved signature | | |
+| F20 | Flattening, with the word explained | | Same steps as F16 |

@@ -415,6 +415,38 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     network panel showed no pdf-lib request during start or document load, and exactly one
     at the first operation.
 
+15. **Chip 10's harness checks, and the browser they needed** (plan P3.4). Run by the
+    builder on 2026-09-21 against `npm run dev`. All eight passed.
+
+    | # | Check | Result |
+    |---|---|---|
+    | 1 | Create a saved signature, then open **Saved signatures...** | Created one described `harness-scan.png`, the user's own case. The dialog listed it, numbered 1 |
+    | 2 | Rename it, with the tab still open | The stored description changed and the saved-signature button in the open viewer changed from `harness-scan.png` to `Nick Hall`, with no reload and no call into PDF.js |
+    | 3 | Two tabs, both having used the signature tool, one rename | One rename to `Nicholas Hall`, and both viewers showed it. The name was typed with spaces around it and stored trimmed |
+    | 4 | Reload the page | `Nicholas Hall` in the storage, in the dialog, and on the viewer's button |
+    | 5 | A signature placed before the rename | Its own **Edit description** dialog still read `harness-scan.png` while the saved button read `Nicholas Hall`. Intended |
+    | 6 | No saved signatures, then a value PDFluffer cannot read | The empty text with no rows. With `"[1,2]"` set by hand, the cannot-read text, no rows, and the stored value still `[1,2]` afterwards. The hand-made value was removed |
+    | 7 | **Flatten...** | The new wording exactly, with **Flatten** and **Cancel**. Cancel left the tab clean and the form untouched |
+    | 8 | Regressions H1 and H2 | The dot appeared 678 ms after filling every field. The first save asked and Overwrite cleared it; a second edit and save asked nothing |
+
+    Enter in the name box does the same as the Rename button, checked as part of 6.
+    No console error in any of it.
+
+    **These ran in a headless Edge with a throwaway profile, not in the browser pane.**
+    Two reasons, both worth remembering.
+    - The browser pane's IndexedDB for `http://localhost:1420` is still wedged, exactly as
+      decision 13 describes, so the app cannot boot there. A second Vite on another port is
+      still the workaround for pane work.
+    - The pane was hidden behind the conversation, and a hidden document never fires
+      `requestAnimationFrame`, so PDF.js renders nothing, builds no annotation layer and
+      no editor layer. Every signature check needs those. The same trap bites the headless
+      browser: its page starts visible and goes hidden later, so **every CDP connection
+      sends `Page.bringToFront` first**. Without it the page sits at `renderingState`
+      1 or 0 forever, which looks like a broken viewer and is not.
+
+    The throwaway profile also keeps the promise the chip makes: the installed app's saved
+    signatures were never read or changed. Its profile directory was deleted afterwards.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
@@ -689,6 +721,24 @@ signature tool. `Input.insertText` also needs the page focused (`Page.bringToFro
       names, with their own labels, "Flatten" and "Revert", both `danger`. The same pattern
       as the Clear history dialog.
     - The Document items use a `nested-item` class that shares the Recent list's indent.
+
+27. **Small choices chip 10 left open:**
+    - `parseSavedSignatures` returns null for **any** array, including `[]`. A JSON array
+      is not the shape PDF.js writes, and treating an empty one as an empty list would
+      hide a strange stored value instead of reporting it. A mutation check found this:
+      dropping the array guard left every test green until the case was pinned.
+    - The store decides "the name it already has" by comparing the new raw string with the
+      old one, not by comparing descriptions. PDF.js and this file both write compact JSON
+      with the keys in stored order, so the strings match exactly when nothing changed.
+      This keeps `renameSavedSignature` to the three null cases the chip names.
+    - The dialog reads the list once, as it opens, which the chip allows. A rename re-reads
+      the storage anyway, so a signature added in a viewer meanwhile is never lost.
+    - The name is capped at 120 characters, enforced both by the text box's `maxLength` and
+      by `renameSavedSignature`, so a paste cannot get past the box.
+    - `Object.hasOwn` is ES2022 and this project's `lib` is ES2020, so the own-key test is
+      `Object.prototype.hasOwnProperty.call`. The rebuilt object goes through
+      `Object.fromEntries`, which defines keys rather than assigning them, so a stored key
+      named `__proto__` cannot reach an object prototype.
 
 ## Questions for the user
 
