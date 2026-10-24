@@ -52,10 +52,11 @@ drew in `BUILD-NOTES.md`. Add `<link rel="icon" href="icons/32x32.png">` only if
 `index.html` currently points at `data:,` **and** the file is served in production; otherwise
 leave the favicon as it is.
 
-### 4. P5.4 - version, installer, smoke tests
+### 4. P5.4 - version 0.1.1, installer, smoke tests
 
-- Confirm `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` all say
-  `0.1.0`. Do not bump.
+- **Bump the version to `0.1.1`** in `package.json`, `src-tauri/tauri.conf.json` and
+  `src-tauri/Cargo.toml` (and `Cargo.lock` follows). v0.1.0 was released on 2026-10-24 from
+  the 2026-09-21 installer; this chip's installer is 0.1.1.
 - Grep the tracked files for anything personal before the release: real names from the
   user's documents, real file names, secrets. Fixture names like "Alex Example" are fine.
   Report what you found; change nothing without recording it.
