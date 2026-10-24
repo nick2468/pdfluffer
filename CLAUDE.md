@@ -81,7 +81,9 @@ Builds the Windows installer.
 
 ## Git
 
-- Work on `main`. No worktrees. No remote. **Never push.**
+- Work on `main`. No worktrees. The remote is `origin`, a private GitHub repo
+  (`nick2468/pdfluffer`, added 2026-10-24). **A builder never pushes.** The orchestrator pushes
+  after its review passes, so a wrong build is caught before it reaches GitHub.
 - The approved spec authorises local commits. Commit small, one plan item or a few.
 - `git status` first. Stage explicit paths. Never `git add -A`. Never `git clean`.
 - Subject line in the imperative, under 70 characters. End every message with a
