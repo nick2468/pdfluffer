@@ -82,3 +82,15 @@ and P3.5 as well.
 - [x] P4.8 The tool, the confirm, the progress dialog with Cancel, the closing message (spec 20.5)
 - [x] P4.9 `scripts/prod-smoke/ocr.mjs`: OCR a scanned sample in the release build and check the words and their positions
 - [ ] P4.10 **USER** OCR a real scan, select and copy text, check it in another viewer
+
+## Phase 5 - public release (2026-10-24)
+
+The user ruled: open source under MIT, public repo, installer on GitHub Releases.
+
+- [ ] P5.1 O5: skip any page with real text (spec 20.1), with tests and smoke check 7 updated
+- [ ] P5.2 `Viewer.hasStructuralChanges` and the "Save first" guard on OCR and the Document tools (spec 20.5a), with tests
+- [ ] P5.3 An app icon of PDFluffer's own, replacing the Tauri scaffold's (spec 3 item 14 lifted)
+- [ ] P5.4 Version 0.1.0 in `package.json`, `tauri.conf.json` and `Cargo.toml`; a fresh installer; `smoke:prod`, `smoke:ocr` and `backup.mjs` green
+- [ ] P5.5 Orchestrator: tag v0.1.0, publish the GitHub release with the installer, showcase Download button
+- [ ] P5.6 **USER** OCR a real scan (`docs/user-checks-ocr.md`), install from the release
+

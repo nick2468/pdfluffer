@@ -37,7 +37,11 @@ iframe per tab.
   pin every sibling app uses. Keep Vitest at `^4.1.11` to match them.
 - **`samples-private/` holds the user's real documents.** Never commit, quote, summarise or
   upload anything from it.
-- Build nothing from spec section 3 (out of scope), even if it looks easy.
+- Build nothing from spec section 3 (out of scope), even if it looks easy. (Item 14, the app
+  icon, was lifted on 2026-10-24 for the public release: plan P5.3.)
+- **The repo is public and MIT licensed** (2026-10-24). Nothing personal goes into a tracked
+  file: no real documents, no real names from the user's files, no secrets. Fixture names
+  stay made up.
 
 ## When something does not fit
 

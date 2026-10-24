@@ -1198,7 +1198,7 @@ signatures are never touched, because the picture is never changed.
 | O2 | The page picture comes from **PDF.js rendering the page**, not from pulling the JPEG out of the file | It works for any PDF, whatever is inside it, and it matches what the user sees |
 | O3 | The words are written with **pdf-lib**, as text in rendering mode 3 (invisible), in the standard Helvetica font | No font file to embed. Invisible text needs no matching typeface. Limit: Latin text only (20.6) |
 | O4 | The result goes through `SessionManager.runOp`, like every Document tool | The digital-signature guard, the dirty flag, Revert and "nothing reaches disk until Save" all come for free |
-| O5 | A page that already holds more than 50 non-space characters of text is **skipped** | It is not a scan, or it was already done. This also stops a second run stacking a second layer |
+| O5 | A page that already holds **any** real text is **skipped**. (Was "more than 50 characters" until 2026-10-24. Chip 12 found that a page with a short heading was read again and gained a second, invisible copy of words it already had, so searching found them twice. A scan that carries a one-line text stamp is now left alone, which is the smaller harm) | It is not a scan, or it was already done. This also stops a second run stacking a second layer |
 | O6 | Recognition lives behind a small `OcrService` interface | Tests use a fake. The browser harness has none, so the tool is simply absent there. A later engine can replace it |
 
 ### 20.2 Facts checked at Microsoft's documentation on 2026-09-21
@@ -1273,6 +1273,16 @@ of `AvailableRecognizerLanguages` whose tag starts with `en`, else the first ent
 4. One `runOp` adds every page's layer at once. The tab is now unsaved. A closing message
    says how many pages and words were added, and in which language.
 5. The user checks by selecting text, then saves. Revert to saved undoes it.
+
+### 20.5a Unsaved page edits (ruled 2026-10-24, from chip 12 question 2)
+
+PDF.js's own Pages sidebar can delete or reorder pages, and those edits reach the file only
+on export. The tool numbers pages as the viewer loaded them, so with such edits pending the
+words could land on the wrong pages. Rule: `Viewer` gains `hasStructuralChanges(): boolean`
+(it is PDF.js's `pdfThumbnailViewer.hasStructuralChanges()`, already read by `hasChanges`).
+When it is true, the OCR tool stops before the confirm with title "Save first" and body
+"You have moved or deleted pages. Save the file, then run this again." and one `ok` button.
+The same guard applies to Insert PDF, Rotate and Flatten, which have the same exposure.
 
 ### 20.6 Known limits, accepted
 
