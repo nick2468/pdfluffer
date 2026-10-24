@@ -692,6 +692,12 @@ state back, checked afterwards both times it ran.
 
 **Insert PDF in the installed app, 2026-09-21.** The user ran F15: Insert PDF at end through the native Open dialog, save, reopen. It passed. It was the last feature never run in the installed app, so **no check is open for desktop version 1.**
 
+**A mislabelled commit, 2026-10-24.** Commit `797dbbf` is titled "Add the GitHub remote to
+the git rules" but it actually adds `LICENSE`, `README.md`, the spec rulings O5 and 20.5a,
+phase 5 of the plan and the public-repo rule in `CLAUDE.md`. The orchestrator reused a
+stale message file. It was already pushed to the public repo, and the history is left as it
+is rather than rewritten.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
