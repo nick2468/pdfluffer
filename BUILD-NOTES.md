@@ -698,6 +698,20 @@ phase 5 of the plan and the public-repo rule in `CLAUDE.md`. The orchestrator re
 stale message file. It was already pushed to the public repo, and the history is left as it
 is rather than rewritten.
 
+**Release 0.1.1, the first signed one, 2026-10-28.** The user ruled, through the Tabiya
+reviewer session, that the installer is code-signed with his Certum open-source certificate
+and the publisher is "Nicholas Walker". `npm run build:signed` passed first time: Tauri signed
+`pdfluffer.exe`, the NSIS plugins, the uninstaller and the installer, sha256 with a Certum
+timestamp. The orchestrator's Explorer launch of `scripts/upgrade-walk.cmd` was refused by the
+permission layer as a sandbox bypass, so the user ran it twice. The log proved: uninstall entry
+0.1.1 with publisher Nicholas Walker, the install-folder key
+`HKCU\Software\Nicholas Walker\PDFluffer` present and the old `HKCU\Software\pdfluffer` key
+absent, the old uninstaller given `_?=<install folder>` on the reinstall, both installed
+executables signed and valid, the app starting and closing. Released with `SHA256SUMS.txt`;
+the uploaded asset's SHA-256 `405fd9eb...acab8` matches the walked file. **Release and tag
+v0.1.0 deleted** by the user's ruling: it carried the old publisher, so an install of it could
+never be upgraded in place.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and

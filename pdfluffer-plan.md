@@ -93,6 +93,6 @@ The user ruled: open source under MIT, public repo, installer on GitHub Releases
 - [ ] P5.4 Bump to **0.1.2** in `package.json`, `tauri.conf.json` and `Cargo.toml`; a fresh installer; `smoke:prod`, `smoke:ocr` and `backup.mjs` green
 - [x] P5.5 Orchestrator: tag v0.1.0, publish the GitHub release with the installer, showcase Download button (done 2026-10-24 with the 2026-09-21 installer, by the user's ruling "publish now"; chip 13's installer becomes v0.1.1)
 - [ ] P5.5a Orchestrator: tag v0.1.2 and publish it after chip 13
-- [ ] P5.7 Orchestrator, 2026-10-28: publisher "Nicholas Walker", signed 0.1.1 installer, install walk on the real machine, release v0.1.1
+- [x] P5.7 Orchestrator, 2026-10-28: publisher "Nicholas Walker", signed 0.1.1 installer, install walk on the real machine (run by the user), release v0.1.1. v0.1.0 deleted
 - [ ] P5.6 **USER** OCR a real scan (`docs/user-checks-ocr.md`), install from the release
 
