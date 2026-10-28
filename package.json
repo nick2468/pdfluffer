@@ -1,7 +1,7 @@
 {
   "name": "pdfluffer",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "samples": "node scripts/make-samples.ts",
     "tauri": "tauri",
     "smoke:prod": "node scripts/prod-smoke/run.mjs",
-    "smoke:ocr": "node scripts/prod-smoke/ocr.mjs"
+    "smoke:ocr": "node scripts/prod-smoke/ocr.mjs",
+    "build:signed": "node scripts/build-signed.mjs"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "2.11.1",

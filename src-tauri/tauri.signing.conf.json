@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "windows": {
+      "certificateThumbprint": "4C83A6CA031C3CE9CFCA8C853780CF679F887CE8",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://time.certum.pl",
+      "tsp": true
+    }
+  }
+}

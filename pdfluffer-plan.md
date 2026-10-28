@@ -90,8 +90,9 @@ The user ruled: open source under MIT, public repo, installer on GitHub Releases
 - [ ] P5.1 O5: skip any page with real text (spec 20.1), with tests and smoke check 7 updated
 - [ ] P5.2 `Viewer.hasStructuralChanges` and the "Save first" guard on OCR and the Document tools (spec 20.5a), with tests
 - [ ] P5.3 An app icon of PDFluffer's own, replacing the Tauri scaffold's (spec 3 item 14 lifted)
-- [ ] P5.4 Bump to **0.1.1** in `package.json`, `tauri.conf.json` and `Cargo.toml`; a fresh installer; `smoke:prod`, `smoke:ocr` and `backup.mjs` green
+- [ ] P5.4 Bump to **0.1.2** in `package.json`, `tauri.conf.json` and `Cargo.toml`; a fresh installer; `smoke:prod`, `smoke:ocr` and `backup.mjs` green
 - [x] P5.5 Orchestrator: tag v0.1.0, publish the GitHub release with the installer, showcase Download button (done 2026-10-24 with the 2026-09-21 installer, by the user's ruling "publish now"; chip 13's installer becomes v0.1.1)
-- [ ] P5.5a Orchestrator: tag v0.1.1 and publish it after chip 13
+- [ ] P5.5a Orchestrator: tag v0.1.2 and publish it after chip 13
+- [ ] P5.7 Orchestrator, 2026-10-28: publisher "Nicholas Walker", signed 0.1.1 installer, install walk on the real machine, release v0.1.1
 - [ ] P5.6 **USER** OCR a real scan (`docs/user-checks-ocr.md`), install from the release
 

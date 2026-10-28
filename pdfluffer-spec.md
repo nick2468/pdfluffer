@@ -53,7 +53,7 @@ Do not reopen these. The "why" is here so you can apply them to cases this spec 
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | Personal tool. Never distributed | Any licence works. No code signing. No updater |
+| D1 | ~~Personal tool. Never distributed~~ **Superseded 2026-10-24 and 2026-10-28:** public, MIT, released on GitHub, and from 0.1.1 the installer is code-signed with Nicholas Walker's Certum open-source certificate (`docs/releasing.md`). `bundle.publisher` is "Nicholas Walker", set once and never changed, because Tauri names the registry key an upgrade reads from after it. Still no updater | The user chose to share it. Signing names the publisher; it does not remove SmartScreen's first-day warning |
 | D2 | Desktop shell is **Tauri 2**. Windows 11 only for now | Small installer, real file association, single instance, full file paths |
 | D3 | Core is **React + TypeScript + Vite** | One core can serve the desktop app now and the extension later |
 | D4 | PDF engine is **PDF.js**, the full viewer app, hosted unmodified in an iframe per tab | Every tool works on day one, including the signature dialog. Lowest risk |

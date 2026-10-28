@@ -37,10 +37,11 @@ Download the latest installer from
 [Releases](https://github.com/nick2468/pdfluffer/releases/latest) and run it. It installs
 for the current user and needs no administrator rights.
 
-The installer is not signed with a code-signing certificate, so Windows SmartScreen will
-say the publisher is unknown. Choose **More info**, then **Run anyway**. The warning says
-nothing about the file beyond the fact that I have not bought a certificate. You can read
-the source here, or build it yourself, rather than take my word for it.
+The installer is code-signed, so Windows names the publisher **Open Source Developer
+Nicholas Walker**. SmartScreen may still warn on a new release, because Windows builds up
+trust in a file over time rather than from the signature alone. If it does, choose **More
+info**, then **Run anyway**. You can read the source here, or build it yourself, rather than
+take my word for it.
 
 To make PDFluffer your default PDF app: Windows Settings, Apps, Default apps, search for
 `.pdf`, choose PDFluffer.
@@ -60,7 +61,8 @@ npm run tauri dev      # the real desktop app
 npm run tauri build    # the installer, in src-tauri/target/release/bundle/nsis/
 ```
 
-`npm run smoke:prod`, `smoke:ocr` and `node scripts/prod-smoke/backup.mjs` drive the
+`npm run build:signed` makes the signed installer and needs Nick logged in to SimplySign
+(`docs/releasing.md`). `npm run smoke:prod`, `smoke:ocr` and `node scripts/prod-smoke/backup.mjs` drive the
 built release through its own debugging port, with no one at the window, and check saving,
 single instance, session restore, OCR placement and the backup file. Close PDFluffer first.
 

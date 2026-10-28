@@ -52,16 +52,17 @@ drew in `BUILD-NOTES.md`. Add `<link rel="icon" href="icons/32x32.png">` only if
 `index.html` currently points at `data:,` **and** the file is served in production; otherwise
 leave the favicon as it is.
 
-### 4. P5.4 - version 0.1.1, installer, smoke tests
+### 4. P5.4 - version 0.1.2, installer, smoke tests
 
-- **Bump the version to `0.1.1`** in `package.json`, `src-tauri/tauri.conf.json` and
+- **Bump the version to `0.1.2`** in `package.json`, `src-tauri/tauri.conf.json` and
   `src-tauri/Cargo.toml` (and `Cargo.lock` follows). v0.1.0 was released on 2026-10-24 from
-  the 2026-09-21 installer; this chip's installer is 0.1.1.
+  the 2026-09-21 installer; v0.1.1 (signed, publisher set) on 2026-10-28; this chip's installer is 0.1.2.
 - Grep the tracked files for anything personal before the release: real names from the
   user's documents, real file names, secrets. Fixture names like "Alex Example" are fine.
   Report what you found; change nothing without recording it.
-- With the Rust PATH set, `npm run tauri build` after your last code commit. Record the
-  installer's path, size and SHA-256.
+- With the Rust PATH set, `npm run tauri build` after your last code commit (unsigned; the
+  orchestrator makes the signed one with `npm run build:signed`). Record the installer's
+  path, size and SHA-256. **Never change `bundle.publisher`.**
 - With PDFluffer closed: `npm run smoke:prod`, `npm run smoke:ocr`,
   `node scripts/prod-smoke/backup.mjs`. All green. If the user has the app open, do not
   close it: say so and leave them to the orchestrator.
