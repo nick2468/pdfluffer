@@ -96,3 +96,19 @@ The user ruled: open source under MIT, public repo, installer on GitHub Releases
 - [x] P5.7 Orchestrator, 2026-10-28: publisher "Nicholas Walker", signed 0.1.1 installer, install walk on the real machine (run by the user), release v0.1.1. v0.1.0 deleted
 - [ ] P5.6 **USER** OCR a real scan (`docs/user-checks-ocr.md`), install from the release
 
+## Phase 6 - editing text (spec 21, added 2026-11-04)
+
+Built after chip 13. Released as 0.2.0 when complete.
+
+- [ ] P6.1 `@embedpdf/pdfium` 2.15.1, loaded lazily under the production CSP (chip 14)
+- [ ] P6.2 `pdfiumAdapter`: `listRuns` and `renderPage`, with tests (spec 21.2)
+- [ ] P6.3 `applyEdits`: replace, delete, insert, the squeeze and the notes, with tests (spec 21.3)
+- [ ] P6.4 `read_system_font`, `FileAdapter.readSystemFont`, font coverage and matching, with tests (spec 21.4)
+- [ ] P6.5 A release-build probe: PDFium loads, edits a sample and saves, no CSP error (chip 14)
+- [ ] P6.6 The editor dialog, its toolbar and the input boxes (spec 21.5, chip 15)
+- [ ] P6.7 Undo and redo, and the history rule (spec 21.1 E5, 21.5)
+- [ ] P6.8 `scripts/prod-smoke/edit.mjs`: replace, insert, delete, undo, save, reopen, in the release build
+- [ ] P6.9 Version 0.2.0, an unsigned installer, all smoke tests green
+- [ ] P6.10 Orchestrator: signed build, the user's install walk, release v0.2.0
+- [ ] P6.11 **USER** Edit text in a real PDF and check it in Acrobat, Chrome and Edge (`docs/user-checks-edit.md`)
+

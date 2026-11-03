@@ -23,6 +23,8 @@ iframe per tab.
   phase 4, `src/ocr/tauriOcrService.ts`. Nothing else in `src/` may know Tauri exists.
 - **No network.** No CDN links, web fonts, analytics, update checks or remote fetches.
 - **No new dependencies** beyond spec section 5. Do not change a pinned version.
+- **Only `src/engine/pdfiumAdapter.ts` and its test may import `@embedpdf/pdfium`**, the same
+  way only `pdfLibAdapter.ts` imports `@cantoo/pdf-lib`. Both load lazily.
 - **The builder installs no toolchain.** Rust 1.98 is at `%USERPROFILE%\.cargo\bin` and is
   **not on the shell PATH**. Put it there at the start of every command that needs `cargo`
   or `npm run tauri`. The setting does not survive between tool calls. PowerShell:
@@ -85,8 +87,8 @@ Builds the Windows installer.
 
 ## Git
 
-- Work on `main`. No worktrees. The remote is `origin`, a private GitHub repo
-  (`nick2468/pdfluffer`, added 2026-10-24). **A builder never pushes.** The orchestrator pushes
+- Work on `main`. No worktrees. The remote is `origin`, the PUBLIC GitHub repo
+  `nick2468/pdfluffer` (added 2026-10-24, public and MIT the same day). **A builder never pushes.** The orchestrator pushes
   after its review passes, so a wrong build is caught before it reaches GitHub.
 - The approved spec authorises local commits. Commit small, one plan item or a few.
 - `git status` first. Stage explicit paths. Never `git add -A`. Never `git clean`.

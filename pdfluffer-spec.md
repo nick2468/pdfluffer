@@ -75,7 +75,8 @@ Do not build these, even if they look easy. Several are planned for later specs.
 
 1. The browser extension and any installable web app (PWA).
 2. A custom toolbar, custom signature dialog or any re-skin beyond section 9.4.
-3. Editing existing text or images in a PDF.
+3. Editing existing images in a PDF. (Editing existing **text** was lifted on 2026-11-04:
+   section 21.)
 4. Certificate-based digital signing or signature verification. Version 1 only **detects**
    a digital signature (section 12.4).
 5. Converting to Word, Excel or images. Compress. Redaction. Passwords on save.
@@ -147,6 +148,8 @@ Rust crates: `tauri`, `tauri-build`, `tauri-plugin-single-instance`,
 `tauri-plugin-dialog`, `tauri-plugin-store`, `tauri-plugin-window-state`,
 `tauri-plugin-opener`, `serde`, `serde_json`, `dunce`, `percent-encoding`, and from
 phase 4 the `windows` crate at the version already in `Cargo.lock` (section 20.3).
+
+From phase 6, the npm package `@embedpdf/pdfium` at exactly **2.15.1** (section 21.1 E1).
 
 **No other dependency may be added.** If you believe one is needed, follow the escalation
 rule. Do not use the `pdfjs-dist` npm package. It does not contain the viewer app.
@@ -1293,3 +1296,119 @@ The same guard applies to Insert PDF, Rotate and Flatten, which have the same ex
 4. No language picker. The engine follows the Windows language packs that are installed.
 5. The picture is never straightened, cleaned or compressed. OCR adds text and nothing else.
 6. Windows only, and only in the desktop app.
+
+## 21. Editing text: change, insert and delete (phase 6, added 2026-11-04)
+
+The user asked on 2026-11-04 for PDFluffer to edit documents, starting with changing,
+inserting and deleting text. Section 3 item 3 ("Editing existing text or images") is lifted
+for **text**. Images stay out of scope.
+
+A PDF stores no sentences or paragraphs. It stores **text runs**: short strings drawn at a
+position, in a font, at a size and in a colour. PDFluffer edits text runs. In this section a
+**run** is one or more PDF text objects on one baseline, in the same font, size and colour,
+with gaps no wider than 1.5 times the font size. The UI calls a run "text".
+
+### 21.1 Settled decisions
+
+| # | Decision | Why |
+|---|---|---|
+| E1 | The engine is **PDFium**, Chrome's PDF engine, through `@embedpdf/pdfium` **2.15.1** (MIT, over PDFium's BSD-style licence). It loads lazily, on the first edit, like pdf-lib | Checked 2026-11-04: the package exports every function needed (page objects, `FPDFText_SetText`, `FPDFPageObj_CreateTextObj`, `FPDFText_LoadFont`, `FPDFPage_GenerateContent`, `FPDF_SaveAsCopy`, `FPDF_RenderPageBitmap`). MuPDF was the concept's other choice, but its AGPL licence would force PDFluffer off MIT |
+| E2 | **Line by line, no reflow.** Each run is edited in place. Text never flows onto the next line | User ruling 2026-11-04. It is what a PDF really stores, so it is reliable and keeps the layout |
+| E3 | **Fonts.** Keep the run's own font only when every character of the new text is **proven present**: it already appears in text drawn with that same font somewhere in the document. Otherwise draw that run in the **closest Windows font** (21.4), for that run only, and show a note | User ruling 2026-11-04. Embedded fonts are usually subsets, so an unproven letter may draw as nothing |
+| E4 | **Too long.** If the new run is wider than the old one, narrow its letters to fit, down to 85% of their normal width. If it still does not fit, let it run past the old end and show a note | User ruling 2026-11-04. 85% is hard to notice. Past that, the note warns that it may overlap |
+| E5 | **Undo and redo**, Ctrl+Z and Ctrl+Y in the editor, up to 20 steps. The history lasts until the file is saved or reverted, so reopening the editor continues it | User ruling 2026-11-04 |
+| E6 | The editor is a **page editor dialog**, "Edit text", not a mode inside the PDF.js view. PDFium draws the page in the dialog and PDFluffer draws a box over each run | The PDF.js view scrolls, zooms and redraws on its own schedule, and its own editors compete for clicks. Lining up edit boxes with it from outside would be fragile. The dialog shows exactly the bytes being edited |
+| E7 | Edits are an **ordered list**, replayed on the document's bytes. Undo drops the last edit and replays. **Done** applies the whole list in one `runOp` | Deterministic, small, and it reuses `runOp`'s guards, dirty flag and Revert |
+| E8 | The op is `{ kind: 'text.edits', edits }`, capability `text.edit`, mode `rewrite`. The digital-signature guard (12.4) and the Save-first guard (20.5a) apply when the editor opens | The same rules as every Document tool |
+| E9 | **Not editable**, shown without a box: invisible text (render mode 3, such as an OCR layer), form fields, annotations, text inside form XObjects, Type 3 fonts, vertical writing | Each needs its own handling. Leaving them alone can never damage them |
+| E10 | **Insert** puts a new run where the user clicks, in the font, size and colour of the nearest run on the page. A page with no text uses Arial at 11 point, black | The user's first need is to add a word or line that matches its surroundings |
+
+### 21.2 The engine interface
+
+`src/engine/pdfiumAdapter.ts` implements `EngineAdapter` (capability `text.edit`) and also:
+
+```ts
+interface TextRun {
+  id: string;                    // stable for one listing only
+  pageIndex: number;
+  text: string;
+  bbox: [number, number, number, number];   // PDF points, page space
+  fontName: string; fontSize: number; colour: [number, number, number];
+  editable: boolean; reason?: string;       // why not, from E9
+}
+interface RunLocator { pageIndex: number; text: string; bbox: [number, number, number, number]; }
+type TextEdit =
+  | { kind: 'replace'; target: RunLocator; text: string }
+  | { kind: 'delete';  target: RunLocator }
+  | { kind: 'insert';  pageIndex: number; x: number; y: number; text: string; styleFrom: RunLocator | null };
+type EditNote = { kind: 'font-substituted'; font: string } | { kind: 'runs-past-end' };
+
+listRuns(bytes: Uint8Array, pageIndex: number): Promise<TextRun[]>;
+renderPage(bytes: Uint8Array, pageIndex: number, maxDimension: number):
+  Promise<{ rgba: Uint8ClampedArray; width: number; height: number; transform: number[] }>;
+applyEdits(bytes: Uint8Array, edits: TextEdit[]): Promise<{ bytes: Uint8Array; notes: EditNote[] }>;
+```
+
+An edit names its target by **locator**: page, text and box. Replay finds the one run on that
+page with the same text whose box matches within 1 point. None, or more than one, fails the
+replay with `EngineError('failed', 'The page changed under this edit.')`. Run ids are never
+stored in an edit, because PDFium renumbers objects after every change.
+
+`renderPage`'s `transform` maps PDF points to picture pixels, so the dialog places boxes the
+same way OCR placement does (section 20, decision 16).
+
+### 21.3 Replace, delete and insert
+
+- **Replace:** remove every object of the run, then create one text object with the new text,
+  at the first object's matrix, in the run's font or the substitute from 21.4. Apply the
+  squeeze from E4 by scaling the matrix along the text direction only. Then
+  `FPDFPage_GenerateContent`.
+- **Delete:** remove every object of the run, then `FPDFPage_GenerateContent`.
+- **Insert:** create one text object at the clicked point in page space, styled per E10.
+- Save with `FPDF_SaveAsCopy`, a full rewrite. Text edits are never appended.
+
+### 21.4 Choosing a Windows font
+
+`FileAdapter` gains `readSystemFont(fileName: string): Promise<Uint8Array | null>`. In Tauri
+it calls a new Rust command, `read_system_font`, which reads only a fixed allowlist from
+`C:\Windows\Fonts`: the regular, bold, italic and bold-italic files of Arial, Times New
+Roman, Courier New and Calibri. The browser harness returns null, and the adapter then uses
+PDFium's standard fonts. Those are for the harness only, and a test pins that the Tauri path
+never uses them.
+
+Matching, from the run's base font name and PDF font flags: fixed pitch gives Courier New. A
+name containing Calibri gives Calibri. Serif, or a name containing Times, gives Times New
+Roman. Anything else gives Arial. Bold and italic come from the name (Bold, Black, Heavy,
+Italic, Oblique) or the flags. **Refuse** a font file whose OS/2 `fsType` has the restricted
+licence bit (0x0002) set. The four allowlisted families do not.
+
+### 21.5 The editor dialog
+
+**Edit text...** in the Document menu opens the dialog on the current page. Opening runs the
+same first steps as `runOp`: Save-first guard, signature guard, commit pending edits, export.
+If the export brought in other changes, such as filled fields, the undo history starts again
+from those bytes. The history survives only while text edits are the only changes since it
+began.
+
+The dialog fills the window. It shows the page drawn by PDFium, with a thin box on each
+editable run. Its toolbar has: previous page, next page, page number, **Insert text**,
+**Delete**, **Undo**, **Redo**, **Done** and **Cancel**.
+
+- Click a run: an input box opens over it holding its text. Enter applies one replace edit.
+  Escape closes the box with no edit.
+- A selected run plus the Delete key, or the Delete button, applies one delete edit.
+- **Insert text**, then a click on the page: an input box opens there. Enter applies one insert.
+- Every applied edit replays the list and redraws the page. Notes from the last edit show
+  under the toolbar in plain words.
+- **Done** with edits: one `runOp` with the whole list. The tab becomes unsaved. **Done** with
+  no edits closes the dialog.
+- **Cancel** with new edits asks "Discard these text edits?" with **Discard** and **Keep
+  editing**.
+
+### 21.6 Known limits, accepted
+
+1. No reflow. A longer run can overlap the text to its right, and a note says so.
+2. A substitute font looks different from the original. A note names it.
+3. Not editable: the E9 list, scanned pages (they hold pictures, not text), and images.
+4. Right-to-left scripts, ligatures and combining marks are not handled specially.
+5. A run's own kerning and character spacing are replaced by the font's normal spacing.
