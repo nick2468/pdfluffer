@@ -814,6 +814,14 @@ SHA-256 `6d34b01b7836b7a30e922ffb1b8650a342c47fa154e1177e42b97ab0fc5391f1`. Agai
 signed release build, `smoke:prod` 24 of 24, `smoke:ocr` 33 of 33, `backup.mjs` 14 of 14. The
 install walk is the user's step.
 
+**Release 0.1.2, 2026-11-04.** The user ran `scripts/upgrade-walk.cmd` over the installed 0.1.1.
+The log proved: before, 0.1.1 under publisher Nicholas Walker with the install-folder key
+present and the old `pdfluffer` key absent; the old uninstaller given `_?=<install folder>`;
+"Delete the application data" left unticked and `state.json` unchanged; after, 0.1.2 under the
+same publisher, both executables signed and valid, the app starting and closing. Tag `v0.1.2`
+on `198ced1`, released with `SHA256SUMS-0.1.2.txt`. The downloaded asset's SHA-256
+`6d34b01b...5391f1` matches the walked file, and `releases/latest` answers v0.1.2.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
