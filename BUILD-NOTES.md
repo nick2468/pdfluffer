@@ -54,6 +54,19 @@ commit. Same path, now 7,662,393 bytes. **This is the one for the OCR check**
 smoke:ocr` passed 33 of 33 twice running, `npm run smoke:prod` 24 of 24, and
 `node scripts/prod-smoke/backup.mjs` 14 of 14. The builder did not run it.
 
+**Installer build 0.1.2 (chip 13, plan P5.4), unsigned.** Built on 2026-11-04 after chip
+13's last code commit (`01877aa`), in 3 min 0 s of Rust compile, with the new icon and the
+version at 0.1.2. It made
+`src-tauri\target\release\bundle\nsis\PDFluffer_0.1.2_x64-setup.exe`, 7,627,650 bytes,
+SHA-256 `dee49becdd4757d63746f6d9e4d71e952fd8f13b486c4f56c13e3cb101f05865`. Its file and
+product version read 0.1.2 and `Get-AuthenticodeSignature` says NotSigned, as intended: the
+orchestrator makes the signed one with `npm run build:signed`, which gives a different file
+and hash. The app's own `pdfluffer.exe` reads company "Nicholas Walker" and copyright
+"Copyright (c) 2026 Nicholas Walker"; `bundle.publisher` was not touched. Against this
+build, `npm run smoke:prod` passed 24 of 24, `npm run smoke:ocr` 33 of 33 (check 7 now on
+`three-pages.pdf` and `form-basic.pdf`, both "Nothing to read"), and
+`node scripts/prod-smoke/backup.mjs` 14 of 14. The builder did not run the installer.
+
 **`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
 and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
 output. Another `pdfluffer.exe` dev instance was already running (started 19:14 by a
@@ -662,6 +675,27 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     holds the same files as before plus the SVG. `tauri.conf.json` lists the same five
     icon files, unchanged. The favicon stays `data:,`: `src-tauri/icons/` is not under
     `public/`, so `icons/32x32.png` would not be served in production.
+
+22. **The personal-content sweep before the 0.1.2 release** (chip 13, plan P5.4). Tracked
+    files only, `public/pdfjs/` and `package-lock.json` left out. Nothing was changed.
+    - **No secrets.** No API key, token or private-key pattern, and no `.pfx`, `.p12`,
+      `.key`, `.pem` or `.env` file is tracked. The one certificate,
+      `src-tauri/signing/code-signing.cer`, is the public half, safe by design.
+    - **No real documents.** Only the made-up fixtures in `samples/` are tracked;
+      `samples-private/` has no tracked file. That folder does not exist on this machine
+      now, so the cross-check of its file names against tracked text had nothing to run on.
+    - **No email address** in tracked text.
+    - **One name to look at: "Nick Hall" and "Nicholas Hall"**, in decision 15's table
+      (chip 10's harness rename checks) and in `src/viewer/savedSignatures.test.ts`'s
+      "trims the name" test, both from 2026-09-21. They read as invented: neither is the
+      user's own name and nothing ties them to a document. But they sit close to the
+      user's first name, so the orchestrator may prefer a plainly made-up one such as
+      "Alex Example". Already public in history since 2026-10-24.
+    - **The Windows user folder `C:\Users\nick2\...`** appears in every chip's opening
+      line and in `docs/user-checks-*.md`. It is a path, not a secret, and the account name
+      matches the public GitHub name. Left as it is.
+    - In passing: `docs/user-checks-ocr.md` still names the `PDFluffer_0.1.0_x64-setup.exe`
+      path, and `Cargo.toml` keeps the scaffold's `authors = ["you"]`. Neither is personal.
 
 ## Orchestrator checks
 
