@@ -10,7 +10,7 @@ import {
 } from "../session/dialogTexts";
 import type { SessionManager } from "../session/SessionManager";
 import type { PageImage } from "../viewer/Viewer";
-import { languageName, OCR_TEXT_THRESHOLD, ocrTool } from "./ocrTool";
+import { languageName, ocrTool } from "./ocrTool";
 import type { ToolContext } from "./toolRegistry";
 
 // Spec 20.5. The tool is a script over the session, the dialogs and the OCR service, so
@@ -118,17 +118,24 @@ describe("the OCR tool (spec 20.5)", () => {
     expect(ocrTool.needs).toEqual(["ocr"]);
   });
 
-  it("reads only the pages with 50 or fewer characters of text (O5)", async () => {
-    expect(OCR_TEXT_THRESHOLD).toBe(50);
-    const { session, dialogs, ctx } = setup([0, 200, 50, 51]);
+  it("reads only the pages with no real text at all (O5, revised 2026-10-24)", async () => {
+    const { session, dialogs, ctx } = setup([0, 200, 1, 0, 50]);
     dialogs.answer(BUTTON.continue.id, BUTTON.ok.id);
     await ocrTool.run(ctx);
-    expect(dialogs.asked[0]).toEqual(asked(ocrConfirmDialog(2, 4)));
-    expect(session.rendered.map((r) => r.page)).toEqual([1, 3]);
+    expect(dialogs.asked[0]).toEqual(asked(ocrConfirmDialog(2, 5)));
+    expect(session.rendered.map((r) => r.page)).toEqual([1, 4]);
+  });
+
+  it("skips a page with one character of real text, such as a short heading", async () => {
+    const { session, dialogs, ctx } = setup([1]);
+    dialogs.answer(BUTTON.ok.id);
+    await ocrTool.run(ctx);
+    expect(dialogs.asked).toEqual([asked(NOTHING_TO_READ_DIALOG)]);
+    expect(session.rendered).toEqual([]);
   });
 
   it("says so, and stops, when every page already has text", async () => {
-    const { session, dialogs, ctx } = setup([51, 300]);
+    const { session, dialogs, ctx } = setup([5, 300]);
     dialogs.answer(BUTTON.ok.id);
     await ocrTool.run(ctx);
     expect(dialogs.asked).toEqual([asked(NOTHING_TO_READ_DIALOG)]);

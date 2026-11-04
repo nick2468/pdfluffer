@@ -13,9 +13,6 @@ import {
 } from "../session/dialogTexts";
 import type { Tool, ToolContext } from "./toolRegistry";
 
-/** O5: a page with more real text than this is not a scan, or has been read already. */
-export const OCR_TEXT_THRESHOLD = 50;
-
 const ask = (ctx: ToolContext, text: DialogText): Promise<string> =>
   ctx.dialogs.ask(text.title, text.body, text.buttons);
 
@@ -38,12 +35,16 @@ export function languageName(tag: string): string {
   }
 }
 
-/** The pages, 1-based, that need reading. Null when the tab went away while counting. */
+/**
+ * The pages, 1-based, that need reading. Null when the tab went away while counting.
+ * O5, revised 2026-10-24: a page with any real text is skipped. It is not a scan, or it was
+ * read already, and reading it again would add a second, invisible copy of its words.
+ */
 async function pagesWithoutText(ctx: ToolContext, pages: number): Promise<number[] | null> {
   const needed: number[] = [];
   try {
     for (let page = 1; page <= pages; page++) {
-      if (await ctx.session.pageTextLength(ctx.tabId, page) <= OCR_TEXT_THRESHOLD) needed.push(page);
+      if (await ctx.session.pageTextLength(ctx.tabId, page) === 0) needed.push(page);
     }
   } catch (err) {
     console.warn("Could not count the text on the pages:", err);

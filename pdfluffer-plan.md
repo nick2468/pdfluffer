@@ -87,7 +87,7 @@ and P3.5 as well.
 
 The user ruled: open source under MIT, public repo, installer on GitHub Releases.
 
-- [ ] P5.1 O5: skip any page with real text (spec 20.1), with tests and smoke check 7 updated
+- [x] P5.1 O5: skip any page with real text (spec 20.1), with tests and smoke check 7 updated
 - [ ] P5.2 `Viewer.hasStructuralChanges` and the "Save first" guard on OCR and the Document tools (spec 20.5a), with tests
 - [ ] P5.3 An app icon of PDFluffer's own, replacing the Tauri scaffold's (spec 3 item 14 lifted)
 - [ ] P5.4 Bump to **0.1.2** in `package.json`, `tauri.conf.json` and `Cargo.toml`; a fresh installer; `smoke:prod`, `smoke:ocr` and `backup.mjs` green

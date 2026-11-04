@@ -609,6 +609,15 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     be ready, while its menu item is disabled, so the test now waits for the item to enable
     rather than clicking blind. That second one failed once in three runs before the fix.
 
+19. **O5 skips a page with any real text** (chip 13, plan P5.1). Chip 12's question 1, ruled
+    on 2026-10-24 in spec 20.1 O5: `pageTextLength(page) > 0` means skip. A page with a
+    short heading, such as `three-pages.pdf`'s "Page 1", is no longer read, so it cannot
+    gain a second, invisible copy of words it already has. The accepted cost: a scan that
+    carries a one-line text stamp or header is now left alone. The tool no longer has
+    `OCR_TEXT_THRESHOLD`; the rule is `=== 0`. Unit tests pin a page of 1 character as
+    skipped, and smoke check 7 now opens `three-pages.pdf` and expects "Nothing to read",
+    with `form-basic.pdf` kept as a second case.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
@@ -996,7 +1005,9 @@ never be upgraded in place.
       named `three-pages.pdf` as the file with real text, but its pages hold only "Page 1",
       5 characters each, and O5 reads any page with 50 or fewer. So the tool offers it
       "3 of 3 pages", as the smoke test now shows and records. `form-basic.pdf` has 62
-      characters of real labels and gets "Nothing to read". See question 1 below.
+      characters of real labels and gets "Nothing to read". **Ratified 2026-10-24.** Spec
+      O5 then changed (decision 19), so chip 13 moved check 7 back to `three-pages.pdf`,
+      which now gets "Nothing to read", and kept `form-basic.pdf` as a second case.
     - The confirm says "PDFluffer will read it" for one page and "them" for more, beside
       the chip's "1 of 1 page has" rule. The rest is the chip's wording exactly.
     - The closing message names the language, "English (United Kingdom)" in the app, from
@@ -1030,17 +1041,7 @@ never be upgraded in place.
 
 For the orchestrator.
 
-1. **O5 reads a page with a little real text, and adds a second copy of it.** O5 counts a
-   page with 50 or fewer non-space characters as a scan. A cover page, a page with only a
-   heading, or `three-pages.pdf`'s "Page 1" is offered for reading. If the user goes ahead,
-   the engine reads the printed heading too, and the page gains an invisible second copy
-   of text it already had. Nothing looks different, but selecting or searching finds the
-   words twice. This is the spec's rule as written, so it is not changed here. Two ways
-   out, both a design call: skip a page with **any** real text, which would miss a scan
-   that carries a one-line stamp or header in text; or keep O5 but leave out the words
-   that sit where real text already is. The smoke test records the current behaviour.
-
-2. **A risk, reasoned out but not checked live: page edits not yet saved.** In PDF.js's
+1. **A risk, reasoned out but not checked live: page edits not yet saved.** In PDF.js's
    own Pages sidebar the user can delete or reorder pages, and those edits reach the file
    only when it is exported. The OCR tool numbers pages as the viewer loaded them, but
    `runOp` exports first and applies the text layer to the exported bytes. If pages were

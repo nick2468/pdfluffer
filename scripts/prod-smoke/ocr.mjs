@@ -330,7 +330,20 @@ try {
   await sleep(800);
   check("and adds nothing", (await c.ev(TEXT_LENGTHS)) === JSON.stringify(after) && !(await c.ev(DIRTY)));
 
-  // 7. A file with real text: nothing to read.
+  // 7. Files with real text: nothing to read. O5, revised 2026-10-24, skips a page with any
+  // real text. three-pages.pdf holds only "Page 1" on each page, 5 characters, which the
+  // old rule of 50 offered for reading. Now it is skipped, so it gains no second copy.
+  spawnSync(exe, [three], { env, timeout: 20000 });
+  await until(() => c.ev(activeIs("three-pages.pdf")), 15000);
+  await until(() => c.ev(pagesLoaded(3)), 20000);
+  await sleep(1000);
+  const sparse = await runTool(c);
+  check("three-pages.pdf, 5 characters a page, says \"Nothing to read\"", sparse?.title === "Nothing to read", sparse?.title ?? await c.ev(SCREEN));
+  await c.ev(clickButton("OK"));
+  await sleep(500);
+  check("and leaves it untouched", !(await c.ev(DIRTY)) && !(await c.ev(`!!document.querySelector('dialog[open]')`)));
+
+  // The second case: a form, with real text in its labels.
   spawnSync(exe, [form], { env, timeout: 20000 });
   await until(() => c.ev(activeIs("form-basic.pdf")), 15000);
   await until(() => c.ev(pagesLoaded(1)), 20000);
@@ -339,18 +352,6 @@ try {
   check("form-basic.pdf, which has real text, says \"Nothing to read\"", typed?.title === "Nothing to read", typed?.title ?? await c.ev(SCREEN));
   await c.ev(clickButton("OK"));
   await sleep(500);
-
-  // Spec O5 as it stands: three-pages.pdf holds only "Page 1", 5 characters a page, which
-  // is under the 50 that O5 counts as a scan. So it is offered, and Cancel leaves it alone.
-  spawnSync(exe, [three], { env, timeout: 20000 });
-  await until(() => c.ev(activeIs("three-pages.pdf")), 15000);
-  await until(() => c.ev(pagesLoaded(3)), 20000);
-  await sleep(1000);
-  const sparse = await runTool(c);
-  check("three-pages.pdf, 5 characters a page, is offered for reading, as O5 says", /^3 of 3 pages/.test(sparse?.body ?? ""), sparse?.body?.slice(0, 40));
-  await c.ev(clickButton("Cancel"));
-  await sleep(500);
-  check("and Cancel leaves it untouched", !(await c.ev(DIRTY)) && !(await c.ev(`!!document.querySelector('dialog[open]')`)));
 
   // 8. Nothing went wrong anywhere.
   allProblems.push(...problems(c.events));
