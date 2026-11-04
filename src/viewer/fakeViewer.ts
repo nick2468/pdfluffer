@@ -15,6 +15,8 @@ export class FakeViewer implements Viewer {
   commitCount = 0;
   /** Work held outside hasChanges(), as PDF.js holds a text box that is still being typed. */
   pendingEdit = false;
+  /** Pages moved or deleted in the sidebar and not saved yet (spec 20.5a). A load clears it. */
+  structuralChanges = false;
   readonly loads: FakeLoad[] = [];
 
   docInfo: DocInfo = { pageCount: 1, isXfa: false };
@@ -61,6 +63,7 @@ export class FakeViewer implements Viewer {
     // No dirtychange event: the manager reads hasChanges() itself after every load.
     this.dirty = false;
     this.pendingEdit = false;
+    this.structuralChanges = false;
     return { ...this.docInfo };
   }
 
@@ -73,6 +76,10 @@ export class FakeViewer implements Viewer {
 
   hasChanges(): boolean {
     return this.dirty;
+  }
+
+  hasStructuralChanges(): boolean {
+    return this.structuralChanges;
   }
 
   async exportBytes(): Promise<ExportResult> {

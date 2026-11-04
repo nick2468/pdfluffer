@@ -3,7 +3,8 @@ import type { EngineOp } from "../engine/EngineAdapter";
 import { FakeFileAdapter } from "../files/fakeFileAdapter";
 import { FileError, type FileRef } from "../files/FileAdapter";
 import {
-  BUTTON, FLATTEN_DIALOG, OPEN_FAILED_TITLE, type DialogButton, type Dialogs, type Progress,
+  BUTTON, FLATTEN_DIALOG, OPEN_FAILED_TITLE, SAVE_FIRST_DIALOG, type DialogButton, type Dialogs,
+  type Progress,
 } from "../session/dialogTexts";
 import type { SessionManager } from "../session/SessionManager";
 import {
@@ -45,7 +46,7 @@ class FakeDialogs implements Dialogs {
 }
 
 /**
- * The tools only ever call two methods on the manager. Spec 13.2 types the context's
+ * The tools only ever call three methods on the manager. Spec 13.2 types the context's
  * `session` as the whole `SessionManager`, so this stands in for it through one cast,
  * here. The manager's own behaviour has its own tests.
  */
@@ -54,6 +55,10 @@ function fakeSession() {
     ops: [] as EngineOp[],
     result: true,
     page: 1 as number | null,
+    structural: false,
+    hasStructuralChanges(): boolean {
+      return api.structural;
+    },
     runOp(_tabId: string, op: EngineOp): Promise<boolean> {
       api.ops.push(op);
       return Promise.resolve(api.result);
@@ -198,5 +203,37 @@ describe("Flatten", () => {
     dialogs.answer(BUTTON.continue.id);
     await flatten.run(ctx);
     expect(session.ops).toEqual([{ kind: 'flatten' }]);
+  });
+});
+
+describe("the Save first guard (spec 20.5a)", () => {
+  const saveFirst = { title: "Save first", body: SAVE_FIRST_DIALOG.body, buttons: ["ok"] };
+
+  it("uses the spec's wording", () => {
+    expect(SAVE_FIRST_DIALOG.title).toBe("Save first");
+    expect(SAVE_FIRST_DIALOG.body).toBe("You have moved or deleted pages. Save the file, then run this again.");
+  });
+
+  for (const tool of documentTools) {
+    it(`stops ${tool.label} before any other dialog while page edits are unsaved`, async () => {
+      const { files, session, dialogs, ctx } = setup();
+      files.queuePickFiles([A]);
+      let picked = false;
+      const pick = ctx.files.pickFiles.bind(ctx.files);
+      ctx.files.pickFiles = () => { picked = true; return pick(); };
+      session.structural = true;
+      dialogs.answer(BUTTON.ok.id);
+      await tool.run(ctx);
+      expect(dialogs.asked).toEqual([saveFirst]);
+      expect(picked).toBe(false);
+      expect(session.ops).toEqual([]);
+    });
+  }
+
+  it("lets a tool run as usual once there are no unsaved page edits", async () => {
+    const { session, dialogs, ctx } = setup();
+    await rotateAllRight.run(ctx);
+    expect(dialogs.asked).toEqual([]);
+    expect(session.ops).toHaveLength(1);
   });
 });

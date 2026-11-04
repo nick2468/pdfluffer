@@ -4,7 +4,7 @@ import { FakeFileAdapter } from "../files/fakeFileAdapter";
 import { FakeOcrService, fakeResult } from "../ocr/fakeOcrService";
 import { OcrError, type OcrPageResult } from "../ocr/OcrService";
 import {
-  BUTTON, NOTHING_TO_READ_DIALOG, OCR_FAILED_TITLE, OCR_NO_TEXT_DIALOG, OCR_PROGRESS_TITLE,
+  BUTTON, NOTHING_TO_READ_DIALOG, OCR_FAILED_TITLE, OCR_NO_TEXT_DIALOG, OCR_PROGRESS_TITLE, SAVE_FIRST_DIALOG,
   ocrConfirmDialog, ocrDoneDialog, ocrFailedDialog, type DialogButton, type DialogText, type Dialogs,
   type Progress,
 } from "../session/dialogTexts";
@@ -54,18 +54,22 @@ const asked = (text: DialogText): Asked => ({ title: text.title, body: text.body
 const TAB = "tab-1";
 const TRANSFORM: PageImage["transform"] = [4, 0, 0, -4, 0, 3200];
 
-/** The tool calls five methods on the manager. This stands in for it through one cast. */
+/** The tool calls six methods on the manager. This stands in for it through one cast. */
 function fakeSession(textLengths: number[]) {
   const session = {
     textLengths,
     rendered: [] as { page: number; maxDimension: number }[],
     ops: [] as EngineOp[],
     runOpResult: true,
+    structural: false,
+    counted: 0,
     /** Called as each page is drawn, so a test can press Cancel part way through. */
     onRender: (_page: number): void => {},
     pageCount: (tabId: string) => (tabId === TAB ? session.textLengths.length : null),
+    hasStructuralChanges: (tabId: string) => tabId === TAB && session.structural,
     async pageTextLength(tabId: string, page: number): Promise<number> {
       if (tabId !== TAB) throw new Error("not ready");
+      session.counted++;
       return session.textLengths[page - 1];
     },
     async renderPageImage(tabId: string, page: number, maxDimension: number): Promise<PageImage> {
@@ -132,6 +136,19 @@ describe("the OCR tool (spec 20.5)", () => {
     await ocrTool.run(ctx);
     expect(dialogs.asked).toEqual([asked(NOTHING_TO_READ_DIALOG)]);
     expect(session.rendered).toEqual([]);
+  });
+
+  it("says Save first, before counting or asking anything, while page edits are unsaved (spec 20.5a)", async () => {
+    const { session, dialogs, ocr, ctx } = setup([0, 0]);
+    session.structural = true;
+    dialogs.answer(BUTTON.ok.id);
+    await ocrTool.run(ctx);
+    expect(dialogs.asked).toEqual([asked(SAVE_FIRST_DIALOG)]);
+    expect(session.counted).toBe(0);
+    expect(session.rendered).toEqual([]);
+    expect(ocr.statusCalls).toBe(0);
+    expect(ocr.seen).toEqual([]);
+    expect(session.ops).toEqual([]);
   });
 
   it("says so, and stops, when every page already has text", async () => {

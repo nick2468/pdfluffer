@@ -11,6 +11,7 @@ import {
   BUTTON, NOTHING_TO_READ_DIALOG, OCR_NO_TEXT_DIALOG, OCR_PROGRESS_TITLE, ocrConfirmDialog,
   ocrDoneDialog, ocrFailedDialog, ocrProgressText, type DialogText,
 } from "../session/dialogTexts";
+import { unsavedPageEdits } from "./documentTools";
 import type { Tool, ToolContext } from "./toolRegistry";
 
 const ask = (ctx: ToolContext, text: DialogText): Promise<string> =>
@@ -66,6 +67,8 @@ export const ocrTool: Tool = {
     const ocr = ctx.ocr;
     const total = ctx.session.pageCount(ctx.tabId);
     if (!ocr || !total) return;
+    // Spec 20.5a: the pages are numbered as the viewer loaded them.
+    if (await unsavedPageEdits(ctx)) return;
 
     const needed = await pagesWithoutText(ctx, total);
     if (!needed) return;

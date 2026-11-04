@@ -305,16 +305,20 @@ export class PdfJsViewer implements Viewer {
     if (!app) return false;
     // Spec 9.5, revised 2026-09-19, and chip 7 for the annotation half.
     const annotations = this.annotationsChanged(app);
-    const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
+    const structural = this.hasStructuralChanges();
     const merged = app._mergedDocumentNeedsSaving === true;
     return annotations || structural || merged;
+  }
+
+  hasStructuralChanges(): boolean {
+    return this.app?.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
   }
 
   async exportBytes(): Promise<ExportResult> {
     const app = this.requireApp();
     const capture = this.capture;
     if (!this.hasChanges()) return { mode: 'none' };
-    const structural = app.pdfThumbnailViewer?.hasStructuralChanges?.() === true;
+    const structural = this.hasStructuralChanges();
     const merged = app._mergedDocumentNeedsSaving === true;
     const viaSave = !structural && (app.pdfDocument?.annotationStorage.size ?? 0) > 0;
     // The file on disk is about to differ from the one PDF.js loaded, and an append save does

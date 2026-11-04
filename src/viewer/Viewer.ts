@@ -51,6 +51,12 @@ export interface Viewer {
    */
   commitPendingEdits(): void;
   hasChanges(): boolean;
+  /**
+   * Spec 20.5a. True when pages were moved or deleted in PDF.js's own Pages sidebar and not
+   * saved yet. Those edits reach the bytes only on export, so a tool that numbers pages as
+   * the viewer loaded them must not run while this is true.
+   */
+  hasStructuralChanges(): boolean;
   exportBytes(): Promise<ExportResult>;
   /**
    * Spec 20.4. Draws one page, 1-based, at about 300 dpi, shrunk so its longer side fits

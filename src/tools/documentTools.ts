@@ -2,12 +2,26 @@
 // manager, which owns every decision. Nothing here imports React or the app frame.
 
 import type { Capability } from "../engine/EngineAdapter";
-import { BUTTON, FLATTEN_DIALOG, openFailedDialog, type DialogText } from "../session/dialogTexts";
+import {
+  BUTTON, FLATTEN_DIALOG, openFailedDialog, SAVE_FIRST_DIALOG, type DialogText,
+} from "../session/dialogTexts";
 import { messageOf } from "../session/saveFlow";
 import type { Tool, ToolContext } from "./toolRegistry";
 
 const ask = (ctx: ToolContext, text: DialogText): Promise<string> =>
   ctx.dialogs.ask(text.title, text.body, text.buttons);
+
+/**
+ * Spec 20.5a. True, after telling the user to save, when the tab holds page moves or
+ * deletions that are not saved yet. The tool then stops before any other dialog. OCR and
+ * every tool here run on the exported bytes, and pages edited in the sidebar would not
+ * line up with the pages the tool meant.
+ */
+export async function unsavedPageEdits(ctx: ToolContext): Promise<boolean> {
+  if (!ctx.session.hasStructuralChanges(ctx.tabId)) return false;
+  await ask(ctx, SAVE_FIRST_DIALOG);
+  return true;
+}
 
 const INSERT: Capability[] = ['pages.insertPdf'];
 const ROTATE: Capability[] = ['pages.rotate'];
@@ -19,6 +33,7 @@ export const insertPdf: Tool = {
   needs: INSERT,
   /** One operation per chosen file, in the order chosen. The first failure stops the rest. */
   async run(ctx: ToolContext): Promise<void> {
+    if (await unsavedPageEdits(ctx)) return;
     let refs;
     try {
       refs = await ctx.files.pickFiles();
@@ -44,6 +59,7 @@ export const rotateAllRight: Tool = {
   label: "Rotate all pages right",
   needs: ROTATE,
   async run(ctx: ToolContext): Promise<void> {
+    if (await unsavedPageEdits(ctx)) return;
     await ctx.session.runOp(ctx.tabId, { kind: 'pages.rotate', pages: 'all', degrees: 90 });
   },
 };
@@ -53,6 +69,7 @@ export const rotateAllLeft: Tool = {
   label: "Rotate all pages left",
   needs: ROTATE,
   async run(ctx: ToolContext): Promise<void> {
+    if (await unsavedPageEdits(ctx)) return;
     await ctx.session.runOp(ctx.tabId, { kind: 'pages.rotate', pages: 'all', degrees: -90 });
   },
 };
@@ -62,6 +79,7 @@ export const rotatePageRight: Tool = {
   label: "Rotate this page right",
   needs: ROTATE,
   async run(ctx: ToolContext): Promise<void> {
+    if (await unsavedPageEdits(ctx)) return;
     const page = ctx.session.currentPage(ctx.tabId);
     if (page === null) return;
     await ctx.session.runOp(ctx.tabId, { kind: 'pages.rotate', pages: [page], degrees: 90 });
@@ -74,6 +92,7 @@ export const flatten: Tool = {
   needs: FLATTEN,
   /** Flatten cannot be undone once the file is saved, so it asks first. */
   async run(ctx: ToolContext): Promise<void> {
+    if (await unsavedPageEdits(ctx)) return;
     if (await ask(ctx, FLATTEN_DIALOG) !== BUTTON.continue.id) return;
     await ctx.session.runOp(ctx.tabId, { kind: 'flatten' });
   },

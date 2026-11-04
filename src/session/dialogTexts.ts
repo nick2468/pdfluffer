@@ -107,6 +107,16 @@ export const FLATTEN_DIALOG: DialogText = {
   buttons: [{ id: BUTTON.continue.id, label: "Flatten", kind: "danger" }, BUTTON.cancel],
 };
 
+/**
+ * Spec 20.5a. Pages were moved or deleted in the Pages sidebar and not saved. A tool that
+ * numbers pages as the viewer loaded them stops here, before any other dialog.
+ */
+export const SAVE_FIRST_DIALOG: DialogText = {
+  title: "Save first",
+  body: "You have moved or deleted pages. Save the file, then run this again.",
+  buttons: [BUTTON.ok],
+};
+
 /** Spec 13.6, before Revert throws away everything since the last save. */
 export const REVERT_DIALOG: DialogText = {
   title: "Revert to saved?",

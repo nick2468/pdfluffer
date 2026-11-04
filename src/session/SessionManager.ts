@@ -340,6 +340,15 @@ export class SessionManager {
   }
 
   /**
+   * Spec 20.5a. True when the tab's viewer holds page moves or deletions that are not saved
+   * yet. False for a tab that is not ready, which has no such edits to lose.
+   */
+  hasStructuralChanges(tabId: string): boolean {
+    const tab = this.find(tabId);
+    return tab?.status === 'ready' && tab.viewer?.hasStructuralChanges() === true;
+  }
+
+  /**
    * Runs one document operation over the tab's bytes. True when the document changed.
    * Nothing reaches disk: the tab goes dirty and the user saves when they choose to.
    * A user-level failure shows a dialog and returns false. It never rejects.

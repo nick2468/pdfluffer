@@ -1321,6 +1321,23 @@ describe("SessionManager page reading for OCR (spec 20.4)", () => {
     expect(await manager.pageTextLength(tab(0).id, 2)).toBe(0);
   });
 
+  it("asks the tab's viewer whether pages were moved or deleted and not saved (spec 20.5a)", async () => {
+    const { manager, viewers, tab } = setup();
+    await manager.start();
+    await manager.openRefs([A]);
+    expect(manager.hasStructuralChanges(tab(0).id)).toBe(false);
+    viewers[0].structuralChanges = true;
+    expect(manager.hasStructuralChanges(tab(0).id)).toBe(true);
+  });
+
+  it("says a tab that is not ready, or is gone, has no unsaved page edits", async () => {
+    const { manager, files, tab } = setup();
+    await files.saveState("session", savedSession([A, B], 0));
+    await manager.start();
+    expect(manager.hasStructuralChanges(tab(1).id)).toBe(false);
+    expect(manager.hasStructuralChanges("no-such-tab")).toBe(false);
+  });
+
   it("refuses to read a page from a tab that is not ready", async () => {
     const { manager, files, tab } = setup();
     await files.saveState("session", savedSession([A, B], 0));

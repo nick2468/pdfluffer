@@ -618,6 +618,34 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     skipped, and smoke check 7 now opens `three-pages.pdf` and expects "Nothing to read",
     with `form-basic.pdf` kept as a second case.
 
+20. **The "Save first" guard** (chip 13, plan P5.2). Chip 12's question 2, ruled on
+    2026-10-24 in spec 20.5a. `Viewer.hasStructuralChanges()` reads PDF.js's
+    `pdfThumbnailViewer.hasStructuralChanges()`, in `PdfJsViewer.ts` (D7); `hasChanges` and
+    `exportBytes` now call it rather than repeating the expression. `SessionManager` passes
+    it through, and says false for a tab that is not ready. One helper,
+    `unsavedPageEdits(ctx)` in `documentTools.ts`, shows "Save first" with the spec's exact
+    body and one OK, and the tool returns. It runs first in the OCR tool (before the pages
+    are even counted) and in all five Document tools: Insert PDF (before the Open dialog),
+    the three Rotate items and Flatten (before its confirm). The chip said "the four
+    Document tools"; the spec names Insert PDF, Rotate and Flatten, and the Rotate items are
+    three, so all five carry it. A mutation check (guard removed from Flatten and from OCR)
+    failed both tests.
+
+    **Driven live in the browser harness** (`npm run dev`, browser pane, 2026-11-04). On
+    `three-pages.pdf`, page 2 deleted in PDF.js's Pages sidebar (Manage, Delete), then
+    Rotate all pages right: "Save first" showed with the spec's body and one OK. After OK
+    the file still had 3 pages, rotation 0, and nothing had run. The negative control, the
+    same file opened fresh: Rotate all pages right ran with no dialog and page 1 read
+    `/Rotate 90`. The OCR tool is absent in the harness (O6), so its guard rests on the unit
+    test and the shared helper.
+
+    **One PDF.js behaviour found on the way: Undo does not clear it.** After the sidebar's
+    own Undo put page 2 back, `pdfThumbnailViewer.hasStructuralChanges()` still answered
+    true and the tab stayed dirty, so "Save first" would still show until the file is saved
+    or closed. That is PDF.js's flag, the same one `hasChanges` has always read, and it
+    fails safe: the user is asked to save a file whose pages are in fact as loaded. Not
+    changed, since a fix would mean second-guessing PDF.js's own record.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
@@ -1041,14 +1069,7 @@ never be upgraded in place.
 
 For the orchestrator.
 
-1. **A risk, reasoned out but not checked live: page edits not yet saved.** In PDF.js's
-   own Pages sidebar the user can delete or reorder pages, and those edits reach the file
-   only when it is exported. The OCR tool numbers pages as the viewer loaded them, but
-   `runOp` exports first and applies the text layer to the exported bytes. If pages were
-   deleted or moved and not saved, the words could land on the wrong pages. Nothing is
-   lost, and Revert to saved undoes it, but it would be quietly wrong. The simple guard is
-   for the tool to ask the user to save first while such edits are pending, which needs
-   one small new `Viewer` method, so it is a design change and is left for a ruling.
+None open.
 
 ## Known issues
 
