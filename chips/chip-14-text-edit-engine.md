@@ -7,7 +7,8 @@ orchestrator session wrote the spec and reviews your work. This chip is your who
 
 ## Where things stand
 
-PDFluffer is public, MIT licensed, and released as a signed 0.1.1. The user now wants to
+PDFluffer is public, MIT licensed, and released as a signed 0.1.2 (chip 13, reviewed and
+released 2026-11-04). The user now wants to
 **change, insert and delete text** in a PDF. Spec section 21 settles how. Phase 6 is two
 chips. **This one builds the engine and proves it in the release build. It adds no UI.**
 Chip 15 builds the editor dialog, and what it says depends on what you find here.
