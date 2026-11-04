@@ -24,8 +24,9 @@ how selecting and copying feel. That part is yours.
 
 ## Before you start
 
-1. Install the new build: run
-   `C:\Users\nick2\Code\pdfluffer\src-tauri\target\release\bundle\nsis\PDFluffer_0.1.0_x64-setup.exe`.
+1. Install the latest release: download `PDFluffer_<version>_x64-setup.exe` from
+   https://github.com/nick2468/pdfluffer/releases/latest and run it. It is signed by
+   "Open Source Developer Nicholas Walker". SmartScreen may still warn about a new file.
 2. Pick a real scanned PDF of your own, one with printed text.
 3. **Copy it first**, and do this check on the copy. The check ends with a save, and a save
    overwrites the file.

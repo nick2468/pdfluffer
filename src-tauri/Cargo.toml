@@ -2,7 +2,7 @@
 name = "pdfluffer"
 version = "0.1.2"
 description = "PDFluffer, a no-nag PDF reader and light editor"
-authors = ["you"]
+authors = ["Nicholas Walker"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
