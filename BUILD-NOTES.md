@@ -67,6 +67,21 @@ build, `npm run smoke:prod` passed 24 of 24, `npm run smoke:ocr` 33 of 33 (check
 `three-pages.pdf` and `form-basic.pdf`, both "Nothing to read"), and
 `node scripts/prod-smoke/backup.mjs` 14 of 14. The builder did not run the installer.
 
+**Installer build with the text-editing engine (chip 14, plan P6.5), unsigned, still 0.1.2.**
+Built on 2026-11-04 from the working tree after chip 14's engine commits, in 2 min 42 s of
+Rust compile. Version and `bundle.publisher` untouched. It made
+`src-tauri\target\release\bundle\nsis\PDFluffer_0.1.2_x64-setup.exe`, **9,570,962 bytes**,
+SHA-256 `50b9845cc34d7890738fb53c510b194b656f6d3a79be705c822b9964f632f225`: **1,943,312
+bytes more** than chip 13's unsigned 7,627,650, which is PDFium's 4,646,932-byte `.wasm`
+compressed, plus its 154 KB chunk. It is not for release: phase 6 ships as 0.2.0 (P6.9).
+**It overwrote the signed 0.1.2 installer of the same name in that folder.** The builder
+copied the signed one first, unchanged (Authenticode Valid, SHA-256
+`6d34b01b7836b7a30e922ffb1b8650a342c47fa154e1177e42b97ab0fc5391f1`), to
+`PDFluffer_0.1.2_x64-setup.signed-release-copy.exe` beside it. The published release on
+GitHub is not affected. Against this build: `node scripts/prod-smoke/edit-probe.mjs` 15 of
+15 (twice), `npm run smoke:prod` 24 of 24, `npm run smoke:ocr` 33 of 33,
+`node scripts/prod-smoke/backup.mjs` 14 of 14. The builder did not run the installer.
+
 **`tauri dev` (chip 6, plan P1.18).** Not observed. When the builder ran it, Vite started
 and `target\debug\pdfluffer.exe` ran, then exited at once with code 0 and no Rust
 output. Another `pdfluffer.exe` dev instance was already running (started 19:14 by a
@@ -697,6 +712,122 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     - In passing: `docs/user-checks-ocr.md` still names the `PDFluffer_0.1.0_x64-setup.exe`
       path, and `Cargo.toml` keeps the scaffold's `authors = ["you"]`. Neither is personal.
 
+23. **How PDFium's `.wasm` loads** (chip 14, plan P6.1). Checked in the package, 2.15.1.
+    - The package has three builds. A bundler takes `index.browser.js` (the `browser`
+      condition), Node and Vitest take `index.js`. Both are Emscripten output that, left
+      alone, finds `pdfium.wasm` with `new URL('pdfium.wasm', import.meta.url)`; the Node
+      build reads it from `node_modules` with `fs`.
+    - **What PDFluffer does: the chip's first route.** `pdfiumAdapter.ts` imports the file's
+      URL with Vite's `?url` suffix, fetches the bytes and passes them to `init` as
+      `wasmBinary`, so the package never fetches anything itself. Vite rewrites the
+      package's own `new URL(...)` too, but both name the same content-hashed file, so
+      `npm run build` emits **one** `dist/assets/pdfium-BJ2Yip8Q.wasm`, 4,646,932 bytes.
+      The unit tests pass a loader that reads the same file from `node_modules`.
+    - **The package carries a CDN address,** `DEFAULT_PDFIUM_WASM_URL =
+      'https://cdn.jsdelivr.net/npm/@embedpdf/pdfium@2.15.1/dist/pdfium.wasm'`, exported
+      and never used by PDFluffer. Behind `Promise.all([import(...), ...])` the bundler
+      kept it in the chunk. Destructuring straight from `await import("@embedpdf/pdfium")`
+      let it drop the unused export: the built chunk no longer names it.
+    - **What the PDFium chunk still names:** one Emscripten help link,
+      `https://emscripten.org/docs/getting_started/FAQ.html#...`, inside a warning that
+      prints only when a `.wasm` is loaded from a `file://` address. PDFluffer never does
+      that, and it is text in a message, not a fetch. The other chunks name XML namespace
+      URIs, React's error page and pdf-lib's repository, as before chip 14.
+    - **Lazy, checked in the release build** by `edit-probe.mjs`: neither
+      `index.browser-*.js` (154 KB) nor the `.wasm` is among the page's fetched resources
+      at start, and both are, from `http://tauri.localhost/assets/`, after the first
+      `listRuns`. The CSP already allowed `'wasm-unsafe-eval'` and `connect-src 'self'`;
+      nothing was loosened.
+    - **The package is an assertion build.** It checks its own exports on every call,
+      which costs a little speed and nothing else. Recorded only.
+    - **Name mapping (chip decision rule 3).** The package exports `FPDF_SaveAsCopy`, but
+      it needs a C file-writer struct with a callback. The package's own wrapper,
+      `PDFiumExt_OpenFileWriter`, `PDFiumExt_SaveAsCopy`, `PDFiumExt_GetFileWriterSize`,
+      `PDFiumExt_GetFileWriterData` and `PDFiumExt_CloseFileWriter`, does that, so the
+      adapter uses it. It writes a full file: the saved bytes never start with the input
+      (a unit test pins it). The form environment likewise comes from
+      `PDFiumExt_OpenFormFillInfo` and `PDFiumExt_InitFormFillEnvironment`, and the
+      library starts with `PDFiumExt_Init`. Every other call is the raw name the chip
+      lists. `FPDFTextObj_GetText` needs a text page, not a page.
+
+24. **How runs are found, where spec 21 left room** (chip 14, plan P6.2 and P6.4).
+    - **Consecutive objects only.** A run grows only from the object drawn just before,
+      so a line whose middle is drawn in another font splits in three, and text the page
+      draws between two parts of a line splits it too. Joining across would mix the text
+      order. Chip 14 test 1 asked for "a bold word inside" a line giving two runs; the test
+      puts the bold word at the end of the line, which gives two, and a grouping test pins
+      the three of a bold word in the middle.
+    - **A space between objects** is added to the run's text when the gap is at least 0.2
+      times the font size and neither side already has one. Gaps are measured between ink
+      boxes, which is what PDFium reports.
+    - **Size** is the font size times the matrix's scale across the line, so a run drawn
+      with `1 Tf` and a scaled matrix reads as its real size. Two objects are the same
+      size within 1%, the same direction within about 2.5 degrees.
+    - **Copies drawn over themselves.** PDFium's text reader drops text drawn again over
+      text it already holds (the fake-bold trick). Tried: the copy reads as an empty
+      object at 0.3, 0.9 and 5 points off, in a second font object, and drawn after other
+      text. Left alone, a delete would leave that copy on the page. So an empty object whose
+      centre lies inside an earlier run, in the same direction and size, joins that run
+      silently, and a unit test proves the page is blank there after a delete. It also
+      means two runs with the same text in the same place cannot exist, so the "more than
+      one match" half of the locator rule cannot be reached through PDFium. It stays in the
+      code.
+    - **"Proven present" (E3)** is read from the document as it came in, before the first
+      edit, over every page, keyed by PDFium's font object. A font this replay loaded
+      itself (a whole Windows font file, or a standard font) counts as having every
+      character, so editing a run a previous edit created keeps its font without a second
+      note. A non-embedded standard font such as pdf-lib's Helvetica still has to prove
+      each character: E3 makes no exception for it.
+    - **A name with "Courier" counts as fixed pitch.** PDFium reports flags 32 (only
+      Nonsymbolic) for the 14 standard fonts, so pdf-lib's Courier would otherwise match
+      Arial. Spec 21.4 matches Times and Calibri by name already; this is the same rule for
+      the third family.
+    - **Notes come once each,** in the order first met, for the whole list. An `EditNote`
+      carries no edit number, so chip 15 shows the last edit's notes by comparing the
+      replay with and without it, or the spec grows a field.
+    - **A replace with only white space is a delete,** and an insert with only white
+      space does nothing.
+    - **An insert's `x` and `y` are where its baseline starts.** With `styleFrom` it copies
+      that run's whole matrix apart from the origin, so a turned run's style gives turned
+      text. With none it is upright as the page is shown: on a `/Rotate 90` page it runs up
+      the page, as a test checks.
+    - **Colours are 0 to 255.** `TextRun.colour` is the fill colour. A stroked run keeps its
+      stroke colour and width; spacing and horizontal scaling are not kept (21.6 item 5).
+    - **A substitute font is embedded whole,** as a CID font so any character it has can
+      be drawn. `FPDFText_LoadFont` does not subset. So an edit that substitutes Arial adds
+      Arial's file to the PDF once per style used. LiberationSans, in the tests, added about
+      100 KB; Windows' Arial is bigger. Subsetting would need another library.
+
+25. **E9 in the engine** (chip 14, plan P6.2).
+    - **Invisible:** render mode 3, and mode 7 (invisible and clipping).
+    - **Clipping, added under E9's rule ("leaving them alone can never damage them"):**
+      render modes 4 to 6 paint and also clip what is drawn after them. Replacing one would
+      change what later content shows, so they are not editable, reason `clipping`.
+    - **Type 3 fonts.** PDFium has no call for a font's type. It counts a Type 3 font as
+      embedded but has no font program to hand back, so `FPDFFont_GetIsEmbedded` true with
+      `FPDFFont_GetFontData` of 0 bytes is the test, checked against a hand-made Type 3 font.
+    - **Vertical writing.** PDFium does not say whether a font writes vertically either,
+      so the adapter measures it: an object whose characters step across its text direction
+      rather than along it. Checked against LiberationSans set up as a CID font with
+      `Identity-H` (steps along) and `Identity-V` (steps across). An object of one character
+      cannot be told apart and counts as horizontal.
+    - **Never listed at all:** form fields and annotations (not page content) and text
+      inside a form XObject (a form object, type 5, not a page-level text object). Tests
+      pin both.
+    - Editing a run that is not editable fails with "This text cannot be edited."
+
+26. **The test hook** (chip 14, plan P6.5). `main.tsx` sets
+    `window.__pdfluffer_test__ = { engines, manager }` only when
+    `import.meta.env.MODE !== "production"` or the app was launched with the argument
+    `PDFLUFFER_TEST_HOOK`. Rust reads its own arguments at start and answers a new command,
+    `test_hook_requested`; `tauriFileAdapter.ts` calls it (the only file allowed to talk to
+    Tauri), and `files/index.ts` returns false outside the desktop app. The argument does
+    not end in `.pdf`, so `parse_pdf_args` never takes it for a file.
+    - **It holds `manager` as well as `engines`,** one more than the chip named: probe step
+      3 has to load the edited bytes in the tab, and `manager.runOp` is how the app does
+      that. It also proves the real op path, `text.edits` to the PDFium adapter, and
+      exposes nothing the page does not already hold.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
@@ -1138,11 +1269,57 @@ on `198ced1`, released with `SHA256SUMS-0.1.2.txt`. The downloaded asset's SHA-2
       would test whether the engine reads sideways text, which is a different question and
       was not tried.
 
+31. **Small choices and departures in chip 14:**
+    - **One commit for P6.1 to P6.3.** The chip asks for one commit per plan item. The
+      three are one adapter file and its tests: none builds or passes alone. P6.4's font
+      pieces, which do stand alone, went first in their own commit, and P6.5 is its own.
+    - **The leak test lists 2,000 times, not 200** (in `pdfiumAdapter.test.ts`). A mutant that never closed its pages grew the heap only
+      after about 1,400 listings, because PDFium's heap starts with some 18 MB of room;
+      at 200 it passed. 2,000 listings take under half a second, and catch it. Drawing a
+      page 200 times catches a leaked bitmap. A mutant that never left PDFium's form
+      environment did **not** grow the heap in 3,000 draws, so the heap cannot prove that
+      call; the code follows PDFium's own order (`FORM_OnBeforeClosePage`, then exit, then
+      close the info). A third test replays a font-loading edit 50 times.
+    - **The probe's replace notes `runs-past-end`.** "Page one" at 96 points is far wider
+      than "Page 1", so the squeeze stops at 85% and says so. That is E4 working, not a
+      fault, and it shows both notes in the release build.
+    - **The probe's edit took the file from 1,809 to 564,418 bytes,** because Arial Bold
+      is embedded whole (question 1 below).
+    - **`TextRun.reason` is a short code** (`invisible`, `clipping`, `type3-font`,
+      `vertical`) for chip 15 to turn into words, not a sentence.
+    - **New files beside the adapter:** `textEdit.ts` holds the spec 21.2 types and a
+      `TextEditEngine` interface, so the dialog can import them without PDFium;
+      `runGrouping.ts` and `fontMatch.ts` hold the pure rules with their tests.
+    - The Write tool of the session that built chip 14 refused paths in the main checkout
+      (it had been opened in a worktree), so its files were written through the shell. No
+      worktree was used for any build, test or commit.
+
 ## Questions for the user
 
 For the orchestrator.
 
-None open.
+From chip 14, 2026-11-04. None blocks chip 15 from starting.
+
+1. **Substitute fonts make an edited PDF much bigger.** PDFium embeds a Windows font
+   whole: it cannot subset. Replacing "Page 1" in `three-pages.pdf` took the file from
+   1,809 to 564,418 bytes, because Arial Bold (989,780 bytes) went in, compressed. Each
+   further style used adds its own file once. Options: accept it as a known limit (21.6);
+   or prefer the run's own font more often (question 2) so substitution is rarer; or a
+   subsetting step, which needs a library spec 5 does not allow. Chip 15 can be built on
+   any of these.
+2. **E3 and fonts that are not embedded.** E3 keeps a run's font only when every
+   character is proven drawn in it, because an embedded subset may lack a letter. A
+   **non-embedded** font, such as the 14 standard fonts many generators and pdf-lib use,
+   is drawn by the viewer from its own full copy, so the subset risk does not apply; yet
+   the rule still substitutes for it. In the probe, "Page one" on `three-pages.pdf`
+   (Helvetica-Bold, not embedded) became Arial Bold and grew the file by half a megabyte,
+   where Helvetica-Bold could have drawn "o" and "n". The builder followed E3 as written.
+   A ruling that non-embedded fonts are kept (for characters in their encoding) would be a
+   small change in `pdfiumAdapter.ts`.
+3. **For chip 15: an edit's own notes.** `applyEdits` returns the notes of the whole list,
+   once each (decision 24). Spec 21.5 shows "notes from the last edit". The dialog can get
+   them by comparing the replay with and without the last edit, or `EditNote` could carry
+   the edit's index. Chip 15's call.
 
 ## Known issues
 

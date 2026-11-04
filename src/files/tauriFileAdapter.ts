@@ -38,6 +38,18 @@ export function fontOrError(reason: unknown): null {
   throw toFileError(reason);
 }
 
+/**
+ * True when the app was started with the PDFLUFFER_TEST_HOOK argument, which the release-build
+ * probes pass (chip 14, BUILD-NOTES decision 26). False on any failure.
+ */
+export async function testHookRequested(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("test_hook_requested");
+  } catch {
+    return false;
+  }
+}
+
 /** The last path segment, split on either slash. */
 function lastSegment(path: string): string {
   return path.split(/[\\/]/).pop() || path;

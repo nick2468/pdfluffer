@@ -8,7 +8,7 @@ import { ServicesContext } from "./app/services";
 import { EngineRegistry } from "./engine/engineRegistry";
 import { PdfiumAdapter } from "./engine/pdfiumAdapter";
 import { PdfLibAdapter } from "./engine/pdfLibAdapter";
-import { createFileAdapter } from "./files";
+import { createFileAdapter, testHookRequested } from "./files";
 import { createOcrService } from "./ocr";
 import type { OcrService } from "./ocr/OcrService";
 import { SessionManager } from "./session/SessionManager";
@@ -39,6 +39,12 @@ async function boot(): Promise<void> {
 
   const manager = new SessionManager(files, () => new PdfJsViewer(), dialogs, { engines });
   files.onCloseRequested(() => manager.confirmCloseAll());
+
+  // The release-build probes call the engines from the page (chip 14, BUILD-NOTES decision
+  // 26). Only in a development build, or when the app was launched with PDFLUFFER_TEST_HOOK.
+  if (import.meta.env.MODE !== "production" || (await testHookRequested())) {
+    (window as unknown as { __pdfluffer_test__: unknown }).__pdfluffer_test__ = { engines, manager };
+  }
 
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>

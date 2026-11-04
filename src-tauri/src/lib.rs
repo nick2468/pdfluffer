@@ -1,4 +1,4 @@
-// The Tauri host (spec 10.3, 10.4, 20.3 and 21.4): seven commands, single instance and the plugins.
+// The Tauri host (spec 10.3, 10.4, 20.3 and 21.4): eight commands, single instance and the plugins.
 
 mod files;
 mod fonts;
@@ -13,6 +13,12 @@ use tauri::{Emitter, Manager, State};
 
 /// Files the operating system asked us to open at launch. `take_pending_files` empties it.
 struct PendingFiles(Mutex<Vec<String>>);
+
+/// True when the app was launched with this argument. Only the release-build probes pass it
+/// (chip 14), so they can reach the engines from the page. It exposes nothing the page does
+/// not already hold.
+const TEST_HOOK_ARG: &str = "PDFLUFFER_TEST_HOOK";
+struct TestHook(bool);
 
 // Off the main thread, so a large file does not freeze the window.
 #[tauri::command(async)]
@@ -57,6 +63,11 @@ fn read_system_font(file_name: String) -> Result<Response, String> {
 }
 
 #[tauri::command]
+fn test_hook_requested(state: State<TestHook>) -> bool {
+    state.0
+}
+
+#[tauri::command]
 fn normalise_paths(paths: Vec<String>) -> Vec<String> {
     paths.iter().filter_map(|p| paths::normalise(Path::new(p))).collect()
 }
@@ -71,6 +82,7 @@ pub fn run() {
     let args: Vec<String> = std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect();
     let cwd = std::env::current_dir().unwrap_or_default();
     let pending = paths::parse_pdf_args(&args, &cwd);
+    let test_hook = args.iter().skip(1).any(|arg| arg == TEST_HOOK_ARG);
 
     tauri::Builder::default()
         // Single instance must be registered first. The callback runs in the running app
@@ -90,6 +102,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .manage(PendingFiles(Mutex::new(pending)))
+        .manage(TestHook(test_hook))
         .invoke_handler(tauri::generate_handler![
             read_pdf,
             write_pdf,
@@ -97,7 +110,8 @@ pub fn run() {
             take_pending_files,
             ocr_image,
             ocr_status,
-            read_system_font
+            read_system_font,
+            test_hook_requested
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
