@@ -800,6 +800,20 @@ the uploaded asset's SHA-256 `405fd9eb...acab8` matches the walked file. **Relea
 v0.1.0 deleted** by the user's ruling: it carried the old publisher, so an install of it could
 never be upgraded in place.
 
+**Review of chip 13, 2026-11-04: passed.** The orchestrator read the diff at source and reran
+the checks in the main checkout: `npm run check` 437 tests, `cargo test` 23, `npm run build`,
+both boundary greps, `public/pdfjs` untouched, no dependency change. The unsigned installer
+matched the builder's recorded size and SHA-256, and `icon.ico` holds six sizes, 16 to 256.
+Rulings on the sweep (decision 22): "Nick Hall" in a test and a table is an invented name and
+stays. The two stale facts were fixed in their own commit: `docs/user-checks-ocr.md` now points
+at the latest release, and `Cargo.toml`'s author is "Nicholas Walker". The builder's choice to
+guard all five Document tools, not "four", is ratified: the spec names the tools, and Rotate is
+three menu items. **Signed build 0.1.2:** `npm run build:signed` from `aeb563d` passed first
+time, sha256 with a Certum timestamp. `PDFluffer_0.1.2_x64-setup.exe`, 7,688,248 bytes,
+SHA-256 `6d34b01b7836b7a30e922ffb1b8650a342c47fa154e1177e42b97ab0fc5391f1`. Against that
+signed release build, `smoke:prod` 24 of 24, `smoke:ocr` 33 of 33, `backup.mjs` 14 of 14. The
+install walk is the user's step.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
