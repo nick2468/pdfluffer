@@ -75,4 +75,8 @@ describe("capabilityOf", () => {
     expect(capabilityOf({ kind: "pages.insertPdf", other: new Uint8Array() })).toBe("pages.insertPdf");
     expect(capabilityOf({ kind: "ocr.addTextLayer", pages: [] })).toBe("ocr");
   });
+
+  it("gives text edits the text.edit capability (spec 21.1 E8)", () => {
+    expect(capabilityOf({ kind: "text.edits", edits: [] })).toBe("text.edit");
+  });
 });

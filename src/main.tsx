@@ -6,6 +6,7 @@ import App from "./app/App";
 import { DialogService } from "./app/dialogService";
 import { ServicesContext } from "./app/services";
 import { EngineRegistry } from "./engine/engineRegistry";
+import { PdfiumAdapter } from "./engine/pdfiumAdapter";
 import { PdfLibAdapter } from "./engine/pdfLibAdapter";
 import { createFileAdapter } from "./files";
 import { createOcrService } from "./ocr";
@@ -25,6 +26,10 @@ async function boot(): Promise<void> {
   // itself, on the first operation.
   const engines = new EngineRegistry();
   engines.register(new PdfLibAdapter());
+  // Phase 6 (spec 21). Registering it costs nothing either: PDFium and its .wasm load on the
+  // first text edit. It reads Windows fonts through the file adapter, so it never imports one.
+  // No tool yet: the editor dialog is chip 15.
+  engines.register(new PdfiumAdapter((fileName) => files.readSystemFont(fileName)));
   const tools = new ToolRegistry();
   for (const tool of documentTools) tools.register(tool);
   // Phase 4 (spec 20.4). Offered only where Windows can read pages: never in the browser

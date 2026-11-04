@@ -2,6 +2,7 @@
 // bytes. Nothing here imports React, the app frame, or the bridge: an engine never sees a viewer.
 
 import type { OcrPageResult } from "../ocr/OcrService";
+import type { TextEdit } from "./textEdit";
 
 export type Capability =
   | 'pages.insertPdf' | 'pages.rotate' | 'flatten'
@@ -22,11 +23,14 @@ export type EngineOp =
   | { kind: 'pages.insertPdf'; other: Uint8Array }              // append all pages at the end
   | { kind: 'pages.rotate'; pages: number[] | 'all'; degrees: 90 | -90 | 180 }
   | { kind: 'flatten' }
-  | { kind: 'ocr.addTextLayer'; pages: OcrPageLayer[] };
+  | { kind: 'ocr.addTextLayer'; pages: OcrPageLayer[] }
+  | { kind: 'text.edits'; edits: TextEdit[] };                   // spec 21.1 E7 and E8
 
-/** The capability an operation needs. Each is named after its kind, except OCR's. */
+/** The capability an operation needs. Each is named after its kind, except OCR's and text's. */
 export function capabilityOf(op: EngineOp): Capability {
-  return op.kind === 'ocr.addTextLayer' ? 'ocr' : op.kind;
+  if (op.kind === 'ocr.addTextLayer') return 'ocr';
+  if (op.kind === 'text.edits') return 'text.edit';
+  return op.kind;
 }
 
 export type EngineErrorCode = 'encrypted' | 'unsupported' | 'failed';

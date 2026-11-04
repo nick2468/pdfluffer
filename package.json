@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@cantoo/pdf-lib": "2.11.1",
+    "@embedpdf/pdfium": "2.15.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-opener": "^2",
