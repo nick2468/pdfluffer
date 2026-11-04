@@ -90,7 +90,8 @@ Do not build these, even if they look easy. Several are planned for later specs.
 11. An in-app theme switch, a settings page beyond section 11.5, localisation.
 12. Linters, formatters, component test frameworks, state libraries, CSS frameworks, UI kits.
 13. Mac and Linux builds.
-14. A custom app icon. Use the icons the Tauri scaffold generates.
+14. A custom app icon. Use the icons the Tauri scaffold generates. (Lifted on 2026-10-24
+    for the public release: plan P5.3.)
 
 ## 4. Prerequisites
 

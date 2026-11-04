@@ -646,6 +646,23 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
     fails safe: the user is asked to save a file whose pages are in fact as loaded. Not
     changed, since a fix would mean second-guessing PDF.js's own record.
 
+21. **PDFluffer's own icon** (chip 13, plan P5.3; spec 3 item 14 lifted 2026-10-24). The
+    source is `src-tauri/icons/app-icon.svg`, 1024 by 1024: an upright page in the app's
+    own primary blue, `#2f62c7` (the dialog buttons' colour), with rounded corners and a
+    white folded corner at top right, and a white rounded cloud, the "fluff", across the
+    middle of the page. Two flat colours, no gradient, no text, on a transparent ground.
+    At 32 pixels it still reads as a blue page with a white cloud and a white corner,
+    checked by eye on the generated `32x32.png` and `128x128@2x.png`.
+
+    `npx tauri icon src-tauri/icons/app-icon.svg` took the SVG directly, so the headless
+    Edge fallback was not needed. It regenerated all 16 files already in `src-tauri/icons/`
+    (`icon.ico` holds the same six sizes as before, 16 to 256, now as PNG entries). It also
+    wrote `64x64.png`, `android/` and `ios/`, which this repo never had and a Windows-only
+    app does not use (spec 3 item 13). They were deleted, not committed, so the folder
+    holds the same files as before plus the SVG. `tauri.conf.json` lists the same five
+    icon files, unchanged. The favicon stays `data:,`: `src-tauri/icons/` is not under
+    `public/`, so `icons/32x32.png` would not be served in production.
+
 ## Orchestrator checks
 
 **Production smoke test, 2026-09-21 (review of chip 9): 24 of 24 passed.** The orchestrator
