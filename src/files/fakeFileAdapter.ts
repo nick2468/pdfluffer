@@ -15,6 +15,7 @@ export class FakeFileAdapter implements FileAdapter {
   private pending: FileRef[] = [];
   private openListeners = new Set<(refs: FileRef[]) => void>();
   private closeHandler: (() => Promise<boolean>) | null = null;
+  private systemFonts = new Map<string, Uint8Array>();
 
   /** Every successful writeFile call, in order. */
   readonly writes: FakeWrite[] = [];
@@ -54,6 +55,11 @@ export class FakeFileAdapter implements FileAdapter {
 
   emitOpenRequest(refs: FileRef[]): void {
     for (const listener of [...this.openListeners]) listener([...refs]);
+  }
+
+  /** readSystemFont(fileName) serves these bytes from now on. Unqueued names give null. */
+  queueSystemFont(fileName: string, bytes: Uint8Array): void {
+    this.systemFonts.set(fileName, bytes.slice());
   }
 
   /** Runs the registered close handler. Resolves true (close) if none is registered. */
@@ -127,6 +133,10 @@ export class FakeFileAdapter implements FileAdapter {
 
   async openExternal(url: string): Promise<void> {
     this.opened.push(url);
+  }
+
+  async readSystemFont(fileName: string): Promise<Uint8Array | null> {
+    return this.systemFonts.get(fileName)?.slice() ?? null;
   }
 
   private throwIfFailing(op: FakeOp, ref: FileRef): void {

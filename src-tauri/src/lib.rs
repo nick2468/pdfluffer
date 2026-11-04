@@ -1,6 +1,7 @@
-// The Tauri host (spec 10.3, 10.4 and 20.3): six commands, single instance and the plugins.
+// The Tauri host (spec 10.3, 10.4, 20.3 and 21.4): seven commands, single instance and the plugins.
 
 mod files;
+mod fonts;
 mod ocr;
 mod paths;
 
@@ -49,6 +50,12 @@ fn ocr_status() -> ocr::OcrStatus {
     ocr::status()
 }
 
+// Off the main thread: a font file can be a few megabytes.
+#[tauri::command(async)]
+fn read_system_font(file_name: String) -> Result<Response, String> {
+    fonts::read_font(&fonts::fonts_dir(), &file_name).map(Response::new)
+}
+
 #[tauri::command]
 fn normalise_paths(paths: Vec<String>) -> Vec<String> {
     paths.iter().filter_map(|p| paths::normalise(Path::new(p))).collect()
@@ -89,7 +96,8 @@ pub fn run() {
             normalise_paths,
             take_pending_files,
             ocr_image,
-            ocr_status
+            ocr_status,
+            read_system_font
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

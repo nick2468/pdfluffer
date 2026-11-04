@@ -105,4 +105,13 @@ describe("FakeFileAdapter", () => {
     expect(files.nameOf(REF)).toBe("Stored.pdf");
     expect(files.nameOf("C:\\other\\New.pdf")).toBe("New.pdf");
   });
+  it("serves queued system fonts as copies, and null for any other name", async () => {
+    const files = new FakeFileAdapter();
+    files.queueSystemFont("arial.ttf", new Uint8Array([1, 2, 3]));
+    const font = await files.readSystemFont("arial.ttf");
+    expect(font).toEqual(new Uint8Array([1, 2, 3]));
+    font![0] = 9;
+    expect(await files.readSystemFont("arial.ttf")).toEqual(new Uint8Array([1, 2, 3]));
+    expect(await files.readSystemFont("times.ttf")).toBeNull();
+  });
 });

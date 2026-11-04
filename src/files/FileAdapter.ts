@@ -41,4 +41,11 @@ export interface FileAdapter {
   onCloseRequested(handler: () => Promise<boolean>): () => void;
   setWindowTitle(title: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+
+  /**
+   * Spec 21.4. A Windows font file from %WINDIR%\Fonts, by file name, for text editing. Only
+   * the allowlist in the Rust command `read_system_font` can be read. Null when this PC has no
+   * such file, and always null outside the desktop app.
+   */
+  readSystemFont(fileName: string): Promise<Uint8Array | null>;
 }

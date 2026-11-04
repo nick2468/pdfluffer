@@ -29,6 +29,15 @@ export function toFileError(reason: unknown): FileError {
   }
 }
 
+/**
+ * `read_system_font`'s refusal: "not-found" means this PC lacks the font, so the engine falls
+ * back (null). Anything else, such as "not-allowed", is a fault, thrown as a FileError.
+ */
+export function fontOrError(reason: unknown): null {
+  if (reason === "not-found") return null;
+  throw toFileError(reason);
+}
+
 /** The last path segment, split on either slash. */
 function lastSegment(path: string): string {
   return path.split(/[\\/]/).pop() || path;
@@ -148,6 +157,14 @@ export class TauriFileAdapter implements FileAdapter {
 
   async openExternal(url: string): Promise<void> {
     await openUrl(url);
+  }
+
+  async readSystemFont(fileName: string): Promise<Uint8Array | null> {
+    try {
+      return new Uint8Array(await invoke<ArrayBuffer>("read_system_font", { fileName }));
+    } catch (err) {
+      return fontOrError(err);
+    }
   }
 
   private normalise(paths: string[]): Promise<FileRef[]> {

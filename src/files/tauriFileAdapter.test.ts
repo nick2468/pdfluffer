@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FileError } from "./FileAdapter";
-import { toFileError } from "./tauriFileAdapter";
+import { fontOrError, toFileError } from "./tauriFileAdapter";
 
 describe("toFileError", () => {
   it.each(["not-found", "not-pdf", "locked"] as const)("maps the Rust string %s to that code", (reason) => {
@@ -30,5 +30,16 @@ describe("toFileError", () => {
   it("passes a FileError through unchanged", () => {
     const original = new FileError("locked", "In use");
     expect(toFileError(original)).toBe(original);
+  });
+});
+
+describe("fontOrError", () => {
+  it("gives null for a font this PC does not have, so the engine falls back", () => {
+    expect(fontOrError("not-found")).toBeNull();
+  });
+
+  it("throws a FileError for a name off the allowlist, or any other failure", () => {
+    expect(() => fontOrError("not-allowed")).toThrow(FileError);
+    expect(() => fontOrError("io: denied")).toThrow("denied");
   });
 });

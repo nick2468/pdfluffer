@@ -125,6 +125,11 @@ export class BrowserFileAdapter implements FileAdapter {
     window.open(url, "_blank", "noopener");
   }
 
+  /** A browser cannot read Windows' fonts. The engine falls back to PDFium's standard fonts. */
+  async readSystemFont(_fileName: string): Promise<Uint8Array | null> {
+    return null;
+  }
+
   private async createFile(name: string, bytes: Uint8Array): Promise<FileRef> {
     const ref = REF_PREFIX + crypto.randomUUID();
     await set(keyOf(ref), { name, bytes });
