@@ -1,4 +1,6 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import react from "@vitejs/plugin-react";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
@@ -28,5 +30,11 @@ export default defineConfig(() => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+  },
+
+  // A Claude Code worktree under .claude/ holds a second copy of src/. Without this, vitest
+  // runs that copy's tests too, which doubles the count and tests code that is not on main.
+  test: {
+    exclude: [...configDefaults.exclude, "**/.claude/**"],
   },
 }));
