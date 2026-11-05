@@ -3,6 +3,7 @@ import {
   EngineError, type Capability, type EngineAdapter, type EngineOp, type EngineResult,
 } from "../engine/EngineAdapter";
 import { EngineRegistry } from "../engine/engineRegistry";
+import type { EditNote, RenderedPage, TextEdit, TextEditEngine, TextRun } from "../engine/textEdit";
 import { FileError, type FileRef } from "../files/FileAdapter";
 import { FakeFileAdapter } from "../files/fakeFileAdapter";
 import { FakeViewer } from "../viewer/fakeViewer";
@@ -10,8 +11,8 @@ import type { ViewState } from "../viewer/Viewer";
 import {
   closeDirtyDialog, ENCRYPTED_DIALOG, externalLinkDialog, firstSaveDialog, LOCKED_DIALOG,
   OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG, OPERATION_GUARD_DIALOG, REVERT_DIALOG,
-  REVERT_FAILED_TITLE, SAVE_FAILED_TITLE, SIGNATURE_GUARD_DIALOG, type DialogButton, type Dialogs,
-  type Progress,
+  REVERT_FAILED_TITLE, SAVE_FAILED_TITLE, SAVE_FIRST_DIALOG, SIGNATURE_GUARD_DIALOG,
+  TEXT_EDITS_DISCARD_DIALOG, type DialogButton, type Dialogs, type Progress,
 } from "./dialogTexts";
 import { SessionManager } from "./SessionManager";
 import type { HistoryStateV1, SessionStateV1, SettingsV1 } from "./state";
@@ -1582,5 +1583,285 @@ describe("SessionManager print", () => {
     await manager.activate(a.id);
     manager.print(a.id);
     expect(viewers[0].printCount).toBe(1);
+  });
+});
+
+// Spec 21.5: the text editor's history, as the session manager runs it
+
+const dec = new TextDecoder();
+const TEXT_ENCRYPTED = new EngineError("encrypted", "This PDF is password-protected.");
+
+/** Applies an edit list by appending each edit's text to the bytes it was given. */
+class FakeTextEditEngine implements EngineAdapter, TextEditEngine {
+  readonly name = "fake text";
+  readonly calls: { bytes: string; edits: string[] }[] = [];
+  fail: Error | null = null;
+  /** Fails only the run() that Done makes, not the editor's own replays. */
+  failRun: Error | null = null;
+
+  capabilities(): ReadonlySet<Capability> {
+    return new Set<Capability>(["text.edit"]);
+  }
+
+  async run(op: EngineOp, bytes: Uint8Array): Promise<EngineResult> {
+    if (op.kind !== "text.edits") throw new EngineError("unsupported", op.kind);
+    if (this.failRun) throw this.failRun;
+    return { bytes: (await this.applyEdits(bytes, op.edits)).bytes, mode: "rewrite" };
+  }
+
+  async listRuns(): Promise<TextRun[]> {
+    return [];
+  }
+
+  async renderPage(): Promise<RenderedPage> {
+    return { rgba: new Uint8ClampedArray(4), width: 1, height: 1, transform: [1, 0, 0, 1, 0, 0] };
+  }
+
+  async applyEdits(bytes: Uint8Array, edits: TextEdit[]): Promise<{ bytes: Uint8Array; notes: EditNote[] }> {
+    const texts = edits.map((e) => (e.kind === "delete" ? "delete" : e.text));
+    this.calls.push({ bytes: dec.decode(bytes), edits: texts });
+    if (this.fail) throw this.fail;
+    return { bytes: new TextEncoder().encode([dec.decode(bytes), ...texts].join("+")), notes: [] };
+  }
+}
+
+const textEdit = (text: string): TextEdit => ({ kind: "insert", pageIndex: 0, x: 10, y: 10, text, styleFrom: null });
+
+/** One ready tab, a text engine and the rotate engine, as main.tsx registers both. */
+async function openWithTextEngine(files: [FileRef, Uint8Array?][] = [[A], [B]]) {
+  const text = new FakeTextEditEngine();
+  const other = new FakeEngine();
+  const engines = new EngineRegistry();
+  engines.register(other);
+  engines.register(text);
+  const env = setup({ files, engines });
+  await env.manager.start();
+  await env.manager.openRefs([A]);
+  return { ...env, text, other, viewer: env.viewers[0], id: env.tab(0).id };
+}
+
+/** Opens the editor, makes these edits and presses Done. */
+async function editAndFinish(manager: SessionManager, id: string, ...texts: string[]) {
+  const history = await manager.beginTextEdit(id);
+  if (!history) throw new Error("the editor did not open");
+  for (const t of texts) await history.apply(textEdit(t));
+  expect(await manager.finishTextEdit(id, history)).toBe(true);
+  return history;
+}
+
+describe("SessionManager text editing (spec 21.5)", () => {
+  it("offers text editing only when an engine can do it", async () => {
+    const { manager } = await openWithTextEngine();
+    expect(manager.canEditText()).toBe(true);
+    const plain = await openWithEngine();
+    expect(plain.manager.canEditText()).toBe(false);
+    expect(await plain.manager.beginTextEdit(plain.id)).toBeNull();
+  });
+
+  it("opens a history over the tab's bytes and holds the tab busy until Cancel", async () => {
+    const { manager, other, id, tab } = await openWithTextEngine();
+    const history = await manager.beginTextEdit(id);
+    expect(history?.base).toEqual(PLAIN);
+    expect(history?.editList).toEqual([]);
+    // Busy: no other operation, no second editor, no revert.
+    expect(await manager.runOp(id, ROTATE)).toBe(false);
+    expect(await manager.beginTextEdit(id)).toBeNull();
+    await manager.revert(id);
+    expect(other.runs).toEqual([]);
+    manager.cancelTextEdit(id);
+    expect(tab(0).dirty).toBe(false);
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+  });
+
+  it("does not open on a tab that is not ready, or an id that is not a tab", async () => {
+    const { manager, tab } = await openWithTextEngine();
+    await manager.openRefs(["C:\\docs\\missing.pdf"]);
+    expect(tab(1).status).toBe("not-found");
+    expect(await manager.beginTextEdit(tab(1).id)).toBeNull();
+    expect(await manager.beginTextEdit("no-such-tab")).toBeNull();
+  });
+
+  it("stops at the Save-first guard when pages were moved or deleted, before any export", async () => {
+    const { manager, dialogs, viewer, id } = await openWithTextEngine();
+    viewer.structuralChanges = true;
+    viewer.nextExport = new Error("must not export");
+    dialogs.answer("ok");
+    expect(await manager.beginTextEdit(id)).toBeNull();
+    expect(last(dialogs.asked)?.title).toBe(SAVE_FIRST_DIALOG.title);
+    viewer.structuralChanges = false;
+    viewer.nextExport = { mode: "none" };
+    expect(await manager.beginTextEdit(id)).not.toBeNull();   // and the tab was not left busy
+  });
+
+  it("asks before editing a signed file: Cancel opens nothing, Continue opens and is remembered", async () => {
+    const { manager, dialogs, id } = await openWithTextEngine([[A, SIGNED]]);
+    dialogs.answer("cancel");
+    expect(await manager.beginTextEdit(id)).toBeNull();
+    expect(last(dialogs.asked)?.buttons).toEqual(OPERATION_GUARD_DIALOG.buttons.map((b) => b.id));
+    dialogs.answer("continue");
+    const history = await manager.beginTextEdit(id);
+    expect(history).not.toBeNull();
+    manager.cancelTextEdit(id);
+    expect(await manager.beginTextEdit(id)).not.toBeNull();   // no second question
+    expect(dialogs.asked).toHaveLength(2);
+  });
+
+  it("commits and exports pending form edits, and the history starts from those bytes", async () => {
+    const { manager, viewer, id, tab } = await openWithTextEngine();
+    viewer.pendingEdit = true;
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    const history = await manager.beginTextEdit(id);
+    expect(viewer.commitCount).toBe(1);
+    expect(history?.base).toEqual(APPENDED);
+    expect(tab(0).dirty).toBe(true);
+  });
+
+  it("Done applies the whole list over the base in one engine call, marks the tab unsaved and reloads", async () => {
+    const { manager, text, viewer, id, tab } = await openWithTextEngine();
+    const history = await manager.beginTextEdit(id);
+    if (!history) throw new Error("no history");
+    await history.apply(textEdit("one"));
+    await history.apply(textEdit("two"));
+    text.calls.length = 0;
+    expect(await manager.finishTextEdit(id, history)).toBe(true);
+    expect(text.calls).toEqual([{ bytes: dec.decode(PLAIN), edits: ["one", "two"] }]);
+    expect(tab(0).dirty).toBe(true);
+    expect(viewer.loads).toHaveLength(2);
+    expect(dec.decode(viewer.loads[1].bytes)).toBe(`${dec.decode(PLAIN)}+one+two`);
+    // Not busy any more.
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+  });
+
+  it("reopening continues the history while nothing else changed", async () => {
+    const { manager, id } = await openWithTextEngine();
+    const first = await editAndFinish(manager, id, "one", "two");
+    const again = await manager.beginTextEdit(id);
+    expect(again).not.toBe(first);                 // a copy, so Cancel cannot change the kept one
+    expect(again?.base).toBe(first.base);
+    expect(again?.editList).toEqual(first.editList);
+    expect(again?.canUndo).toBe(true);
+    expect(again?.hasNewEdits).toBe(false);
+  });
+
+  it("Cancel leaves the kept history as Done left it", async () => {
+    const { manager, id } = await openWithTextEngine();
+    await editAndFinish(manager, id, "one");
+    const second = await manager.beginTextEdit(id);
+    await second?.apply(textEdit("two"));
+    await second?.undo();
+    await second?.undo();
+    manager.cancelTextEdit(id);
+    const third = await manager.beginTextEdit(id);
+    expect(third?.editList.map((e) => e.kind === "insert" && e.text)).toEqual(["one"]);
+    expect(third?.canUndo).toBe(true);
+  });
+
+  it("starts a new history when the export brought in other changes", async () => {
+    const { manager, viewer, id } = await openWithTextEngine();
+    await editAndFinish(manager, id, "one");
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    const history = await manager.beginTextEdit(id);
+    expect(history?.editList).toEqual([]);
+    expect(history?.base).toEqual(APPENDED);
+  });
+
+  it("starts a new history when the tab's bytes are no longer the ones Done produced", async () => {
+    // A save the user cancelled still exported the form edits into the tab's bytes.
+    const { manager, dialogs, viewer, id } = await openWithTextEngine();
+    await editAndFinish(manager, id, "one");
+    viewer.nextExport = { mode: "append", bytes: APPENDED };
+    dialogs.answer("cancel");
+    expect(await manager.save(id)).toBe(false);
+    viewer.nextExport = { mode: "none" };
+    const history = await manager.beginTextEdit(id);
+    expect(history?.editList).toEqual([]);
+    expect(history?.base).toEqual(APPENDED);
+  });
+
+  it("a save ends the history", async () => {
+    const { manager, dialogs, id } = await openWithTextEngine();
+    await editAndFinish(manager, id, "one");
+    dialogs.answer("overwrite");
+    expect(await manager.save(id)).toBe(true);
+    const history = await manager.beginTextEdit(id);
+    expect(history?.editList).toEqual([]);
+    expect(history?.canUndo).toBe(false);
+  });
+
+  it("Revert ends the history", async () => {
+    const { manager, dialogs, id } = await openWithTextEngine();
+    await editAndFinish(manager, id, "one");
+    dialogs.answer("continue");
+    await manager.revert(id);
+    const history = await manager.beginTextEdit(id);
+    expect(history?.editList).toEqual([]);
+    expect(history?.base).toEqual(PLAIN);
+  });
+
+  it("any other operation ends the history", async () => {
+    const { manager, id } = await openWithTextEngine();
+    await editAndFinish(manager, id, "one");
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+    const history = await manager.beginTextEdit(id);
+    expect(history?.editList).toEqual([]);
+    expect(history?.base).toEqual(ENGINE_BYTES);
+  });
+
+  it("an encrypted file at Done shows its dialog, changes nothing, and keeps the editor's tab busy", async () => {
+    const { manager, dialogs, text, viewer, id, tab } = await openWithTextEngine();
+    const history = await manager.beginTextEdit(id);
+    if (!history) throw new Error("no history");
+    await history.apply(textEdit("one"));
+    text.failRun = TEXT_ENCRYPTED;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    dialogs.answer("ok");
+    expect(await manager.finishTextEdit(id, history)).toBe(false);
+    expect(last(dialogs.asked)?.body).toBe(ENCRYPTED_DIALOG.body);
+    expect(tab(0).dirty).toBe(false);
+    expect(viewer.loads).toHaveLength(1);
+    expect(await manager.runOp(id, ROTATE)).toBe(false);   // still busy: the editor stays open
+    manager.cancelTextEdit(id);
+    expect(await manager.runOp(id, ROTATE)).toBe(true);
+  });
+
+  it("any other failure at Done shows the general dialog", async () => {
+    const { manager, dialogs, text, id } = await openWithTextEngine();
+    const history = await manager.beginTextEdit(id);
+    if (!history) throw new Error("no history");
+    await history.apply(textEdit("one"));
+    text.failRun = new Error("boom");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    dialogs.answer("ok");
+    expect(await manager.finishTextEdit(id, history)).toBe(false);
+    expect(last(dialogs.asked)?.body).toBe(OPERATION_FAILED_DIALOG.body);
+  });
+
+  it("closing the window with new edits in the editor asks first, and Keep editing stops the close", async () => {
+    const { manager, dialogs, viewer, id } = await openWithTextEngine();
+    viewer.setDirty(true);
+    manager.watchTextEditor(() => true);
+    await manager.beginTextEdit(id);
+    dialogs.answer("keepEditing");
+    expect(await manager.confirmCloseAll()).toBe(false);
+    expect(dialogs.asked.map((d) => d.title)).toEqual([TEXT_EDITS_DISCARD_DIALOG.title]);
+    expect(viewer.destroyed).toBe(false);
+
+    // Discard goes on to the usual questions.
+    dialogs.answer("discard", "discard");
+    expect(await manager.confirmCloseAll()).toBe(true);
+    expect(dialogs.asked.map((d) => d.title)).toEqual([
+      TEXT_EDITS_DISCARD_DIALOG.title, TEXT_EDITS_DISCARD_DIALOG.title, closeDirtyDialog("a.pdf").title,
+    ]);
+
+  });
+
+  it("closing the window asks nothing about text when the editor holds no new edits, or is gone", async () => {
+    const { manager, dialogs } = await openWithTextEngine();
+    const unwatch = manager.watchTextEditor(() => false);
+    expect(await manager.confirmCloseAll()).toBe(true);
+    unwatch();
+    manager.watchTextEditor(() => true)();   // registered and unregistered at once
+    expect(await manager.confirmCloseAll()).toBe(true);
+    expect(dialogs.asked).toEqual([]);
   });
 });

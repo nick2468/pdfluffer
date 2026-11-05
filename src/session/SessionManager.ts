@@ -4,14 +4,15 @@
 
 import { capabilityOf, EngineError, type EngineAdapter, type EngineOp } from "../engine/EngineAdapter";
 import type { EngineRegistry } from "../engine/engineRegistry";
+import { isTextEditEngine, type TextEditEngine } from "../engine/textEdit";
 import { FileError, type FileAdapter, type FileRef } from "../files/FileAdapter";
 import { hasDigitalSignature } from "../util/hasDigitalSignature";
 import type { PageImage, ShortcutName, Viewer } from "../viewer/Viewer";
 import { askToSave, confirmCloseAll, neighbourAfterClose } from "./closeFlow";
 import {
   BUTTON, ENCRYPTED_DIALOG, externalLinkDialog, OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG,
-  OPERATION_GUARD_DIALOG, REVERT_DIALOG, revertFailedDialog, saveFailedDialog,
-  type DialogText, type Dialogs,
+  OPERATION_GUARD_DIALOG, REVERT_DIALOG, revertFailedDialog, SAVE_FIRST_DIALOG, saveFailedDialog,
+  TEXT_EDITS_DISCARD_DIALOG, type DialogText, type Dialogs,
 } from "./dialogTexts";
 import { DocumentSession, type TabSnapshot } from "./DocumentSession";
 import { messageOf, saveTab, saveTabAs, type SaveContext } from "./saveFlow";
@@ -20,6 +21,7 @@ import {
   setHistoryView, touchHistory, viewFor,
   type DebouncedSaver, type HistoryItem, type HistoryStateV1, type SessionStateV1, type SettingsV1,
 } from "./state";
+import { TextEditHistory } from "./textEditHistory";
 
 export type { DialogButton, Dialogs } from "./dialogTexts";
 
@@ -56,6 +58,8 @@ export class SessionManager {
 
   private host: HTMLElement | null = null;
   private hostWaiters: (() => void)[] = [];
+  /** Spec 21.5: what an open text editor reports, so closing the window can ask first. */
+  private textEditorChecks = new Set<() => boolean>();
 
   private readonly now: () => string;
   private readonly newId: () => string;
@@ -412,9 +416,132 @@ export class SessionManager {
     tab.bytes = result.bytes;
     tab.pendingEngineChanges = true;   // makes the tab dirty, and makes the next save a rewrite
     tab.hasDigitalSignature = hasDigitalSignature(result.bytes);
+    tab.textEdits = null;              // spec 21.5: any other operation ends the text history
     this.publish();
     await this.reload(tab, viewer);
     return true;
+  }
+
+  // Editing text (spec 21.5). The editor dialog holds a history while it is open. After Done
+  // the tab keeps it, so reopening the editor continues it while nothing else has changed.
+
+  /** True when some engine edits text, so the menu offers Edit text... */
+  canEditText(): boolean {
+    return this.textEngine() !== null;
+  }
+
+  /**
+   * Opens the text editor's history for a tab, running the same first steps as an operation:
+   * the Save-first guard, the signature guard, commit pending edits, export. The tab's kept
+   * history continues only when the export changed nothing and the tab's bytes are still the
+   * ones the last Done produced. Otherwise a new history starts over the tab's bytes.
+   * Marks the tab busy until finishTextEdit or cancelTextEdit. Null when a guard stopped it.
+   */
+  async beginTextEdit(tabId: string): Promise<TextEditHistory | null> {
+    const tab = this.find(tabId);
+    if (!tab || tab.status !== 'ready' || !tab.viewer || tab.busy) return null;
+    const engine = this.textEngine();
+    if (!engine) {
+      console.warn("No engine can edit text. The document is unchanged.");
+      return null;
+    }
+    tab.busy = true;
+    let history: TextEditHistory | null = null;
+    try {
+      history = await this.openTextHistory(tab, engine);
+      return history;
+    } finally {
+      if (!history) tab.busy = false;
+    }
+  }
+
+  private async openTextHistory(tab: DocumentSession, engine: TextEditEngine): Promise<TextEditHistory | null> {
+    // Spec 20.5a: pages moved or deleted in the sidebar would not line up with PDFium's pages.
+    if (tab.viewer?.hasStructuralChanges()) {
+      await this.ask(SAVE_FIRST_DIALOG);
+      return null;
+    }
+    if (tab.hasDigitalSignature && !tab.rewriteAcknowledged) {
+      const choice = await this.ask(OPERATION_GUARD_DIALOG);
+      if (choice !== BUTTON.continue.id || !this.has(tab)) return null;
+      tab.rewriteAcknowledged = true;
+    }
+    this.commitPendingEdits(tab);
+    const viewer = tab.viewer;
+    if (!viewer) return null;
+    let exported;
+    try {
+      exported = await viewer.exportBytes();
+    } catch (err) {
+      await this.ask(saveFailedDialog(messageOf(err)));
+      return null;
+    }
+    if (!this.has(tab)) return null;
+    if (exported.mode !== 'none') {
+      tab.bytes = exported.bytes;
+      tab.unsavedMode = 'rewrite';
+      this.publish();
+    }
+    const kept = tab.textEdits;
+    if (exported.mode === 'none' && kept && kept.doneBytes === tab.bytes) return kept.history.fork();
+    tab.textEdits = null;
+    return new TextEditHistory(engine, tab.bytes ?? new Uint8Array());
+  }
+
+  /**
+   * Done with edits (spec 21.5). The whole list is applied over the history's base in one engine
+   * call, then exactly what runOp does after its engine call. The tab keeps the history and the
+   * bytes it produced. True when the tab changed. On a failure the dialog says why, the tab
+   * stays busy and the editor stays open, so no edit is lost; Cancel then clears it.
+   */
+  async finishTextEdit(tabId: string, history: TextEditHistory): Promise<boolean> {
+    const tab = this.find(tabId);
+    if (!tab) return false;
+    const adapter = this.engines?.findAdapter('text.edit') ?? null;
+    if (!adapter) return false;
+    const op: EngineOp = { kind: 'text.edits', edits: history.editList };
+    let result;
+    try {
+      result = await adapter.run(op, history.base.slice());
+    } catch (err) {
+      const encrypted = err instanceof EngineError && err.code === 'encrypted';
+      console.warn(`${adapter.name} could not run ${op.kind}:`, err);
+      await this.ask(encrypted ? ENCRYPTED_DIALOG : OPERATION_FAILED_DIALOG);
+      return false;
+    }
+    if (!this.has(tab)) return false;
+
+    tab.bytes = result.bytes;
+    tab.pendingEngineChanges = true;
+    tab.hasDigitalSignature = hasDigitalSignature(result.bytes);
+    tab.textEdits = { history, doneBytes: result.bytes };
+    this.publish();
+    try {
+      if (tab.viewer) await this.reload(tab, tab.viewer);
+    } finally {
+      tab.busy = false;
+    }
+    return true;
+  }
+
+  /** Cancel, or Done with no change: the tab is free again and nothing changed. */
+  cancelTextEdit(tabId: string): void {
+    const tab = this.find(tabId);
+    if (tab) tab.busy = false;
+  }
+
+  /**
+   * The open editor registers whether it holds new edits, typed text included, so closing the
+   * window asks "Discard these text edits?" first. Returns the unregister function.
+   */
+  watchTextEditor(hasNewEdits: () => boolean): () => void {
+    this.textEditorChecks.add(hasNewEdits);
+    return () => { this.textEditorChecks.delete(hasNewEdits); };
+  }
+
+  private textEngine(): (EngineAdapter & TextEditEngine) | null {
+    const adapter = this.engines?.findAdapter('text.edit') ?? null;
+    return adapter && isTextEditEngine(adapter) ? adapter : null;
   }
 
   /** Shows the changed bytes. The bytes are already the tab's, so a failure only loses the view. */
@@ -462,6 +589,7 @@ export class SessionManager {
       tab.pendingEngineChanges = false;
       tab.unsavedMode = null;
       tab.rewriteAcknowledged = false;
+      tab.textEdits = null;
       tab.hasDigitalSignature = hasDigitalSignature(bytes);
       this.publish();
       await this.reload(tab, viewer);
@@ -494,6 +622,9 @@ export class SessionManager {
   }
 
   async confirmCloseAll(): Promise<boolean> {
+    // Spec 21.5: an open text editor with new edits asks before anything else.
+    if ([...this.textEditorChecks].some((check) => check())
+      && await this.ask(TEXT_EDITS_DISCARD_DIALOG) !== BUTTON.discard.id) return false;
     const ok = await confirmCloseAll({
       tabs: () => this.tabs,
       has: (tab) => this.has(tab),

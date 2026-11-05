@@ -196,6 +196,37 @@ export function ocrFailedDialog(code: 'unavailable' | 'too-large' | 'failed', de
   return { title: OCR_FAILED_TITLE, body: `${why} Nothing was changed.`, buttons: [BUTTON.ok] };
 }
 
+// Spec 21.5, the text editor: "Edit text...".
+
+/** Cancel, or closing the window, while the editor holds new edits. Escape keeps editing. */
+export const TEXT_EDITS_DISCARD_DIALOG: DialogText = {
+  title: "Discard these text edits?",
+  body: "",
+  buttons: [BUTTON.discard, { id: "keepEditing", label: "Keep editing" }],
+};
+
+/** Every other word the editor shows. */
+export const TEXT_EDITOR = {
+  menuItem: "Edit text...",
+  title: "Edit text",
+  loading: "Loading the text editor...",
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  insert: "Insert text",
+  delete: "Delete",
+  undo: "Undo",
+  redo: "Redo",
+  done: "Done",
+  cancel: "Cancel",
+  insertHint: "Click where the new text should start. Press Escape to stop.",
+  newText: "New text",
+  page: (page: number, of: number) => `Page ${page} of ${of}`,
+  fontSubstituted: (font: string) => `This text's own font lacks some of these letters, so it now uses ${font}.`,
+  runsPastEnd: "The new text is longer than the old, so it may overlap the text after it.",
+  refused: (message: string) => `PDFluffer could not make this edit. ${message}`,
+  drawFailed: (message: string) => `PDFluffer could not show this page. ${message}`,
+} as const;
+
 /** Spec 12.3, Save As onto a file that is open in another tab. */
 export const OPEN_ELSEWHERE_DIALOG: DialogText = {
   title: "File is open elsewhere",

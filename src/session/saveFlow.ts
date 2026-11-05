@@ -125,6 +125,7 @@ async function write(ctx: SaveContext, tab: DocumentSession, target: FileRef): P
 async function afterWrite(ctx: SaveContext, tab: DocumentSession, mode: SaveMode): Promise<void> {
   tab.pendingEngineChanges = false;
   tab.unsavedMode = null;
+  tab.textEdits = null;   // spec 21.5: a save ends the text editor's history
   if (tab.bytes) tab.hasDigitalSignature = hasDigitalSignature(tab.bytes);
   ctx.publish();
   if (mode !== 'rewrite' || !tab.viewer || !tab.bytes) return;

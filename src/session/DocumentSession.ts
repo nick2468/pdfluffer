@@ -3,6 +3,14 @@
 
 import type { FileRef } from "../files/FileAdapter";
 import type { Viewer, ViewState } from "../viewer/Viewer";
+import type { TextEditHistory } from "./textEditHistory";
+
+/** Spec 21.5: what the tab keeps after the text editor's Done, so reopening it continues. */
+export interface KeptTextEdits {
+  history: TextEditHistory;
+  /** The bytes Done produced. The history continues only while the tab still holds these. */
+  doneBytes: Uint8Array;
+}
 
 export type TabStatus = 'unloaded' | 'loading' | 'ready' | 'not-found' | 'error';
 
@@ -36,10 +44,12 @@ export class DocumentSession {
   view: ViewState | null = null;
   pendingEngineChanges = false;
   rewriteAcknowledged = false;
+  /** The text editor's history after Done. A save, Revert or any other operation ends it. */
+  textEdits: KeptTextEdits | null = null;
 
   /** Set when an export succeeded but its bytes are not on disk yet (the user cancelled). */
   unsavedMode: 'append' | 'rewrite' | null = null;
-  /** True while an engine operation or a revert is running on this tab (spec 13.3). */
+  /** True while an engine operation, a revert or the text editor is running on this tab (spec 13.3, 21.5). */
   busy = false;
   /** The in-flight load, so a second activate does not load twice. */
   loading: Promise<void> | null = null;
