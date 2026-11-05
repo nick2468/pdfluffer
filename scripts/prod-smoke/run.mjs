@@ -55,11 +55,34 @@ const pagesLoaded = (n) => `(() => { const a = ${VIS}?.contentWindow?.PDFViewerA
 const rotations = `(async () => { const a = ${VIS}.contentWindow.PDFViewerApplication; const out = []; for (let i = 1; i <= a.pagesCount; i++) out.push((await a.pdfDocument.getPage(i)).rotate); return out.join(','); })()`;
 const openMenu = `(() => { const b = [...document.querySelectorAll('.tabbar button')].find(b => /menu/i.test(b.getAttribute('aria-label') || b.title || '')); if (!b) return false; b.click(); return true; })()`;
 const clickMenuItem = (label) =>
-  `(() => { const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(label)})); if (!b) return false; b.click(); return true; })()`;
+  `(() => { const b = [...document.querySelectorAll('.menu-list button')].find(b => b.textContent.trim().startsWith(${JSON.stringify(label)})); if (!b) return false; b.click(); return true; })()`;
+const menuHas = (label) =>
+  `[...document.querySelectorAll('.menu-list button')].some(b => b.textContent.trim().startsWith(${JSON.stringify(label)}) && !b.disabled)`;
+const MENU_OPEN = `!!document.querySelector('.menu-list')`;
 const textFields = `[...${VIS}.contentDocument.querySelectorAll('.annotationLayer input[type="text"]')]`;
 const typeInto = (index, value) =>
   `(() => { const i = ${textFields}[${index}]; i.focus(); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`;
 const DIRTY = `!!document.querySelector('.tab.active .tab-dirty')`;
+
+/**
+ * Opens the menu and clicks one item. The menu closes whenever the window loses focus
+ * (AppMenu's blur handler), and this test runs on the user's real desktop, where another
+ * window can take focus at any moment: on 2026-11-05 Revert never ran in 1 of 2 runs. So
+ * reopen the menu while waiting if it closed, and open it again if it closed before the
+ * click, as ocr.mjs's runTool does (commit b465fba). A click that landed is never repeated.
+ */
+async function chooseMenuItem(c, label) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ready = await until(async () => {
+      if (await c.ev(menuHas(label))) return true;
+      if (!(await c.ev(MENU_OPEN))) await c.ev(openMenu);
+      return false;
+    }, 20000, 400);
+    if (!ready) return false;
+    if (await c.ev(clickMenuItem(label))) return true;
+  }
+  return false;
+}
 const SETTLED = `!document.querySelector('.tab.active .tab-dirty') && !document.querySelector('dialog[open]')`;
 
 const results = [];
@@ -185,15 +208,11 @@ try {
   check("page and zoom are restored", view === "3@1.5", view);
 
   // F. A Document tool, then Revert. The tool needs the lazily loaded pdf-lib chunk.
-  await c.ev(openMenu);
-  await sleep(400);
-  await c.ev(clickMenuItem("Rotate all pages right"));
+  await chooseMenuItem(c, "Rotate all pages right");
   await until(() => c.ev(DIRTY), 20000);
   await sleep(1500);
   check("Rotate all pages right turns every page and marks the tab dirty", (await c.ev(rotations)) === "90,90,90", await c.ev(rotations));
-  await c.ev(openMenu);
-  await sleep(400);
-  await c.ev(clickMenuItem("Revert to saved"));
+  await chooseMenuItem(c, "Revert to saved");
   await until(() => c.ev(DIALOG), 5000);
   await c.ev(clickButton("Revert"));
   await until(() => c.ev(SETTLED), 15000);

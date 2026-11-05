@@ -973,6 +973,26 @@ Fixed in `b465fba`: `runTool` reopens a closed menu while it waits and never rep
 that landed. Then 4 of 4 runs passed 33 of 33. `run.mjs` has the same pattern and passed every
 time; if it ever flakes the same way, give it the same fix.
 
+**Review of chip 15, 2026-11-05: passed.** The orchestrator read the history, the manager's
+`beginTextEdit`, `finishTextEdit` and `cancelTextEdit`, the dialog, the menu item, the revised
+E3 trial and the smoke test at source, and reran everything in the main checkout:
+`npm run check` 575 tests, `cargo test` 28, the boundary greps (`@embedpdf/pdfium` only in the
+adapter and its test, `@tauri-apps` only in the two allowed files), `public/pdfjs` untouched,
+no em dash under `src/` or `src-tauri/src/`, no CDN address in `dist/`, `bundle.publisher`
+still "Nicholas Walker". Against a fresh unsigned `npm run tauri build` of `6ba38ca`
+(`PDFluffer_0.2.0_x64-setup.exe`, 9,575,131 bytes, SHA-256 `16e486c7...a9d04c06`):
+`smoke:edit` 34 of 34, `edit-probe.mjs` 16 of 16, `backup.mjs` 14 of 14, `smoke:ocr` 33 of 33.
+Every choice in decision 32 is ratified, including Done that fails keeping the editor open
+and the tab busy, and the window-level key listener.
+
+**`smoke:prod` failed once at that review, the same way `smoke:ocr` had.** Revert never ran:
+the menu had closed when the window lost focus. Fixed in `run.mjs` with the same pattern,
+`chooseMenuItem`, which reopens a closed menu while it waits and never repeats a click that
+landed. Then 3 runs: 24, 24, and one 23 where the saved form value read "Smoke Testi". The
+test sets that value in code, so a stray "i" can only be a real keystroke from the user's
+keyboard reaching the field the test had focused, since the test runs on the real desktop.
+It is not counted as an app fault. If it recurs while nobody is typing, look again.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
