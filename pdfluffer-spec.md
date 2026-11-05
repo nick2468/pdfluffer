@@ -1315,13 +1315,13 @@ with gaps no wider than 1.5 times the font size. The UI calls a run "text".
 |---|---|---|
 | E1 | The engine is **PDFium**, Chrome's PDF engine, through `@embedpdf/pdfium` **2.15.1** (MIT, over PDFium's BSD-style licence). It loads lazily, on the first edit, like pdf-lib | Checked 2026-11-04: the package exports every function needed (page objects, `FPDFText_SetText`, `FPDFPageObj_CreateTextObj`, `FPDFText_LoadFont`, `FPDFPage_GenerateContent`, `FPDF_SaveAsCopy`, `FPDF_RenderPageBitmap`). MuPDF was the concept's other choice, but its AGPL licence would force PDFluffer off MIT |
 | E2 | **Line by line, no reflow.** Each run is edited in place. Text never flows onto the next line | User ruling 2026-11-04. It is what a PDF really stores, so it is reliable and keeps the layout |
-| E3 | **Fonts.** Keep the run's own font only when every character of the new text is **proven present**: it already appears in text drawn with that same font somewhere in the document. Otherwise draw that run in the **closest Windows font** (21.4), for that run only, and show a note | User ruling 2026-11-04. Embedded fonts are usually subsets, so an unproven letter may draw as nothing |
+| E3 | **Fonts.** Keep the run's own font only when every character of the new text is **proven present**: it already appears in text drawn with that same font somewhere in the document. Otherwise draw that run in the **closest Windows font** (21.4), for that run only, and show a note. **Revised 2026-11-05:** a font that is **not embedded** is also kept when PDFium, setting the new text in that font, reads the same text back, which shows the font's encoding carries every character | User ruling 2026-11-04. Embedded fonts are usually subsets, so an unproven letter may draw as nothing. A font that is not embedded, such as the 14 standard fonts, is drawn by the viewer from its own full copy, so it lacks a letter only when its encoding cannot name it. The revision follows the user's ruling ("swap only when the original font lacks a typed letter") and avoids embedding a whole Windows font for nothing (chip 14 question 2) |
 | E4 | **Too long.** If the new run is wider than the old one, narrow its letters to fit, down to 85% of their normal width. If it still does not fit, let it run past the old end and show a note | User ruling 2026-11-04. 85% is hard to notice. Past that, the note warns that it may overlap |
 | E5 | **Undo and redo**, Ctrl+Z and Ctrl+Y in the editor, up to 20 steps. The history lasts until the file is saved or reverted, so reopening the editor continues it | User ruling 2026-11-04 |
 | E6 | The editor is a **page editor dialog**, "Edit text", not a mode inside the PDF.js view. PDFium draws the page in the dialog and PDFluffer draws a box over each run | The PDF.js view scrolls, zooms and redraws on its own schedule, and its own editors compete for clicks. Lining up edit boxes with it from outside would be fragile. The dialog shows exactly the bytes being edited |
 | E7 | Edits are an **ordered list**, replayed on the document's bytes. Undo drops the last edit and replays. **Done** applies the whole list in one `runOp` | Deterministic, small, and it reuses `runOp`'s guards, dirty flag and Revert |
 | E8 | The op is `{ kind: 'text.edits', edits }`, capability `text.edit`, mode `rewrite`. The digital-signature guard (12.4) and the Save-first guard (20.5a) apply when the editor opens | The same rules as every Document tool |
-| E9 | **Not editable**, shown without a box: invisible text (render mode 3, such as an OCR layer), form fields, annotations, text inside form XObjects, Type 3 fonts, vertical writing | Each needs its own handling. Leaving them alone can never damage them |
+| E9 | **Not editable**, shown without a box: invisible text (render mode 3, such as an OCR layer), form fields, annotations, text inside form XObjects, Type 3 fonts, vertical writing, and **clipping text** (render modes 4 to 7, added by chip 14 under this rule and ratified 2026-11-05) | Each needs its own handling. Leaving them alone can never damage them |
 | E10 | **Insert** puts a new run where the user clicks, in the font, size and colour of the nearest run on the page. A page with no text uses Arial at 11 point, black | The user's first need is to add a word or line that matches its surroundings |
 
 ### 21.2 The engine interface
@@ -1342,7 +1342,9 @@ type TextEdit =
   | { kind: 'replace'; target: RunLocator; text: string }
   | { kind: 'delete';  target: RunLocator }
   | { kind: 'insert';  pageIndex: number; x: number; y: number; text: string; styleFrom: RunLocator | null };
-type EditNote = { kind: 'font-substituted'; font: string } | { kind: 'runs-past-end' };
+type EditNote =                // `edit` is the 0-based index of the edit in the list (2026-11-05)
+  | { kind: 'font-substituted'; font: string; edit: number }
+  | { kind: 'runs-past-end'; edit: number };
 
 listRuns(bytes: Uint8Array, pageIndex: number): Promise<TextRun[]>;
 renderPage(bytes: Uint8Array, pageIndex: number, maxDimension: number):
@@ -1357,6 +1359,9 @@ stored in an edit, because PDFium renumbers objects after every change.
 
 `renderPage`'s `transform` maps PDF points to picture pixels, so the dialog places boxes the
 same way OCR placement does (section 20, decision 16).
+
+A note carries the index of the edit that caused it, and each note appears once per edit
+(ruled 2026-11-05, chip 14 question 3), so the dialog can show the last edit's notes only.
 
 ### 21.3 Replace, delete and insert
 
@@ -1395,16 +1400,34 @@ The dialog fills the window. It shows the page drawn by PDFium, with a thin box 
 editable run. Its toolbar has: previous page, next page, page number, **Insert text**,
 **Delete**, **Undo**, **Redo**, **Done** and **Cancel**.
 
-- Click a run: an input box opens over it holding its text. Enter applies one replace edit.
-  Escape closes the box with no edit.
-- A selected run plus the Delete key, or the Delete button, applies one delete edit.
-- **Insert text**, then a click on the page: an input box opens there. Enter applies one insert.
+- Click a run: it is **selected** and an input box opens over it holding its text. Enter
+  applies one replace edit. Escape closes the box with no edit, and the run stays selected.
+- A selected run plus the Delete key (with no input box focused), or the Delete button,
+  applies one delete edit. Replacing a run with only spaces is a delete too.
+- **Insert text**, then a click on the page: an input box opens there. The click point is
+  where the new text's baseline starts. Enter applies one insert, styled from the nearest
+  editable run on the page (E10). Insert mode ends after one insert or Escape.
+- **An input box that loses focus with changed text applies its edit, as Enter does.** Typed
+  text is never dropped silently (refined 2026-11-05). Done waits for that edit.
 - Every applied edit replays the list and redraws the page. Notes from the last edit show
-  under the toolbar in plain words.
-- **Done** with edits: one `runOp` with the whole list. The tab becomes unsaved. **Done** with
-  no edits closes the dialog.
+  under the toolbar in plain words. An edit the engine refuses is not added, and its
+  message shows there instead.
+- **Undo** goes back at most 20 steps from the newest edit. The list itself is not cut
+  short, because replaying a shortened list over a re-saved base would embed a substitute
+  font again (refined 2026-11-05).
+- **Done** with edits: the whole list is applied over the history's **base bytes** (the tab's
+  bytes when the history began) in one engine call with `runOp`'s guards and reload. The tab
+  becomes unsaved. **Done** with no change closes the dialog.
 - **Cancel** with new edits asks "Discard these text edits?" with **Discard** and **Keep
-  editing**.
+  editing**. Closing the window while the dialog holds new edits asks the same first.
+- The tab is busy while the dialog is open, so no other operation runs on it, and the app's
+  own shortcuts (Ctrl+S, Ctrl+W, Ctrl+O, Ctrl+Tab and the rest) do nothing until it closes.
+
+**The history rule, made exact (2026-11-05).** The tab keeps the history after Done: its base
+bytes, its edit list, its redo list, and the bytes Done produced. Reopening the editor
+continues it only when the export finds no other change **and** the tab's bytes are still the
+ones Done produced. Any other operation, a save, or Revert ends it. A new history's base is the
+tab's bytes after the opening export.
 
 ### 21.6 Known limits, accepted
 
@@ -1413,3 +1436,8 @@ editable run. Its toolbar has: previous page, next page, page number, **Insert t
 3. Not editable: the E9 list, scanned pages (they hold pictures, not text), and images.
 4. Right-to-left scripts, ligatures and combining marks are not handled specially.
 5. A run's own kerning and character spacing are replaced by the font's normal spacing.
+6. **A substitute Windows font is embedded whole**, once per style used, because PDFium cannot
+   subset a font. One substitution adds about half a megabyte to a megabyte to the file.
+   Accepted 2026-11-05 (chip 14 question 1). The E3 revision makes it rarer. Subsetting would
+   need a library section 5 does not allow, which is the user's call.
+7. The page is shown whole, fitted to the dialog. There is no zoom in the editor.

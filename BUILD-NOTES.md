@@ -953,6 +953,25 @@ same publisher, both executables signed and valid, the app starting and closing.
 on `198ced1`, released with `SHA256SUMS-0.1.2.txt`. The downloaded asset's SHA-256
 `6d34b01b...5391f1` matches the walked file, and `releases/latest` answers v0.1.2.
 
+**Review of chip 14, 2026-11-05: passed.** The orchestrator read the adapter, the font
+command, the test hook and the seam changes at source and reran everything in the main
+checkout: `npm run check` 528 tests, `cargo test` 28, `npm run build`, the three boundary
+greps (`@embedpdf/pdfium` only in the adapter and its test), `public/pdfjs` untouched, no em
+dash under `src/` or `src-tauri/src/`. The built PDFium chunk names no CDN; its one address is
+Emscripten's help link in a warning text. The test font is PDF.js's vendored LiberationSans,
+only read, so no font file was added. Against a fresh `npm run tauri build` of `3961c57`:
+`edit-probe.mjs` 15 of 15, `smoke:prod` 24 of 24, `backup.mjs` 14 of 14. Every deviation in
+decisions 23 to 26 and 31 is ratified, including `clipping` in E9 (now in the spec's table) and
+`manager` in the test hook.
+
+**`smoke:ocr` failed 3 runs in 7 at that review, and the cause was the test, not the app.**
+Two runs missed a "Nothing to read" dialog, and one stopped early. Each failure found the app
+menu closed and no warning logged. The menu closes when the window loses focus (AppMenu's blur
+handler), and the test runs on the user's real desktop, where another window can take focus.
+Fixed in `b465fba`: `runTool` reopens a closed menu while it waits and never repeats a click
+that landed. Then 4 of 4 runs passed 33 of 33. `run.mjs` has the same pattern and passed every
+time; if it ever flakes the same way, give it the same fix.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
@@ -1298,28 +1317,15 @@ on `198ced1`, released with `SHA256SUMS-0.1.2.txt`. The downloaded asset's SHA-2
 
 For the orchestrator.
 
-From chip 14, 2026-11-04. None blocks chip 15 from starting.
+None open. Chip 14's three questions were ruled on 2026-11-05 (orchestrator, spec 21):
 
-1. **Substitute fonts make an edited PDF much bigger.** PDFium embeds a Windows font
-   whole: it cannot subset. Replacing "Page 1" in `three-pages.pdf` took the file from
-   1,809 to 564,418 bytes, because Arial Bold (989,780 bytes) went in, compressed. Each
-   further style used adds its own file once. Options: accept it as a known limit (21.6);
-   or prefer the run's own font more often (question 2) so substitution is rarer; or a
-   subsetting step, which needs a library spec 5 does not allow. Chip 15 can be built on
-   any of these.
-2. **E3 and fonts that are not embedded.** E3 keeps a run's font only when every
-   character is proven drawn in it, because an embedded subset may lack a letter. A
-   **non-embedded** font, such as the 14 standard fonts many generators and pdf-lib use,
-   is drawn by the viewer from its own full copy, so the subset risk does not apply; yet
-   the rule still substitutes for it. In the probe, "Page one" on `three-pages.pdf`
-   (Helvetica-Bold, not embedded) became Arial Bold and grew the file by half a megabyte,
-   where Helvetica-Bold could have drawn "o" and "n". The builder followed E3 as written.
-   A ruling that non-embedded fonts are kept (for characters in their encoding) would be a
-   small change in `pdfiumAdapter.ts`.
-3. **For chip 15: an edit's own notes.** `applyEdits` returns the notes of the whole list,
-   once each (decision 24). Spec 21.5 shows "notes from the last edit". The dialog can get
-   them by comparing the replay with and without the last edit, or `EditNote` could carry
-   the edit's index. Chip 15's call.
+1. **Substitute fonts make an edited PDF much bigger.** Accepted as a known limit, spec 21.6
+   item 6. The ruling on question 2 makes substitution rarer. Subsetting would need a new
+   library, which is the user's call.
+2. **E3 and fonts that are not embedded.** Ruled: E3 revised. A font that is not embedded is
+   kept when PDFium, setting the new text in it, reads the same text back. Chip 15 builds it.
+3. **An edit's own notes.** Ruled: `EditNote` carries `edit`, the 0-based index of the edit
+   that caused it, once per edit (spec 21.2). Chip 15 builds it.
 
 ## Known issues
 
