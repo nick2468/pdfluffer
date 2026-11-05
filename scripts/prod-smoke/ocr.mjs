@@ -57,6 +57,7 @@ const openMenu = `(() => { const b = [...document.querySelectorAll('.tabbar butt
 const menuHas = (label) => `[...document.querySelectorAll('.menu-list button')].some(b => b.textContent.trim() === ${JSON.stringify(label)} && !b.disabled)`;
 const clickMenuItem = (label) =>
   `(() => { const b = [...document.querySelectorAll('.menu-list button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}); if (!b) return false; b.click(); return true; })()`;
+const MENU_OPEN = `!!document.querySelector('.menu-list')`;
 const DIRTY = `!!document.querySelector('.tab.active .tab-dirty')`;
 /** What is on screen, for a failure's detail: the tabs, and the menu's OCR item. */
 const SCREEN = `JSON.stringify({
@@ -251,14 +252,25 @@ async function checkText(c, when) {
 
 /** Opens the menu and runs the OCR tool. The first dialog it shows, or null. */
 async function runTool(c) {
-  await c.ev(openMenu);
-  await sleep(400);
   // The item is disabled until the tab is ready, and a click on it then does nothing. A tab
   // opened by a second launch can take a moment, so wait for it rather than click blind.
-  if (!(await until(() => c.ev(menuHas(TOOL)), 20000))) return null;
-  await c.ev(clickMenuItem(TOOL));
-  const shown = await until(() => c.ev(DIALOG), 20000);
-  return shown ? JSON.parse(shown) : null;
+  // The menu also closes whenever the window loses focus (AppMenu's blur handler), and this
+  // test runs on the user's real desktop, where another window can take focus at any moment.
+  // That closed it between the open and the check in 3 of 7 runs on 2026-11-05, and the
+  // check then waited out its 20 seconds. So reopen the menu while waiting if it closed, and
+  // open it again if it closed before the click. A click that landed is never repeated.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ready = await until(async () => {
+      if (await c.ev(menuHas(TOOL))) return true;
+      if (!(await c.ev(MENU_OPEN))) await c.ev(openMenu);
+      return false;
+    }, 20000, 400);
+    if (!ready) return null;
+    if (!(await c.ev(clickMenuItem(TOOL)))) continue;
+    const shown = await until(() => c.ev(DIALOG), 20000);
+    return shown ? JSON.parse(shown) : null;
+  }
+  return null;
 }
 
 let c;
