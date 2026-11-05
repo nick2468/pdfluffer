@@ -38,8 +38,14 @@ export type TextEdit =
   | { kind: 'delete'; target: RunLocator }
   | { kind: 'insert'; pageIndex: number; x: number; y: number; text: string; styleFrom: RunLocator | null };
 
-/** What the editor tells the user after an edit (E3, E4). */
-export type EditNote = { kind: 'font-substituted'; font: string } | { kind: 'runs-past-end' };
+/**
+ * What the editor tells the user after an edit (E3, E4). `edit` is the 0-based index, in the
+ * list given to `applyEdits`, of the edit that caused it. Each note appears once per edit
+ * (spec 21.2, ruled 2026-11-05), so the editor can show the newest edit's notes only.
+ */
+export type EditNote =
+  | { kind: 'font-substituted'; font: string; edit: number }
+  | { kind: 'runs-past-end'; edit: number };
 
 /** A page drawn for the editor. `transform` maps PDF points to picture pixels, as PDF.js's does. */
 export interface RenderedPage {
@@ -53,6 +59,14 @@ export interface TextEditEngine {
   listRuns(bytes: Uint8Array, pageIndex: number): Promise<TextRun[]>;
   renderPage(bytes: Uint8Array, pageIndex: number, maxDimension: number): Promise<RenderedPage>;
   applyEdits(bytes: Uint8Array, edits: TextEdit[]): Promise<{ bytes: Uint8Array; notes: EditNote[] }>;
+}
+
+/** True when an engine adapter also edits text, so the editor can reach it through this interface. */
+export function isTextEditEngine(value: unknown): value is TextEditEngine {
+  const engine = value as Partial<TextEditEngine> | null;
+  return typeof engine?.listRuns === 'function'
+    && typeof engine.renderPage === 'function'
+    && typeof engine.applyEdits === 'function';
 }
 
 /**

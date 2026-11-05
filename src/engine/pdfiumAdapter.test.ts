@@ -305,16 +305,17 @@ describe("applyEdits: replace", () => {
     expect(run(await fontful.listRuns(result.bytes, 0), "Second here hold").fontName).toBe("Helvetica");
   });
 
-  it("substitutes the closest Windows font for a character not drawn yet, with a note (chip 14 test 3)", async () => {
+  it("substitutes the closest Windows font for a character the font cannot hold, with a note (chip 14 test 3)", async () => {
     const before = await threeLines();
     const { source, asked } = liberationSource();
     const fontful = new PdfiumAdapter(source, wasm);
     const old = run(await fontful.listRuns(before, 0), "Hello there world");
-    const result = await fontful.applyEdits(before, [{ kind: "replace", target: locator(old), text: "Hello Zed" }]);
-    expect(result.notes).toEqual([{ kind: "font-substituted", font: "Arial" }]);
+    // Omega is not in Helvetica's WinAnsi encoding, so the trial (E3 revised) reads it back wrong.
+    const result = await fontful.applyEdits(before, [{ kind: "replace", target: locator(old), text: "Hello Ω" }]);
+    expect(result.notes).toEqual([{ kind: "font-substituted", font: "Arial", edit: 0 }]);
     expect(asked).toEqual(["arial.ttf"]);
     const runs = await fontful.listRuns(result.bytes, 0);
-    expect(run(runs, "Hello Zed").fontName).toBe("LiberationSans");
+    expect(run(runs, "Hello Ω").fontName).toBe("LiberationSans");
     // The run beside it keeps its own font.
     expect(run(runs, "Second line here").fontName).toBe("Helvetica");
     await reloads(result.bytes);
@@ -334,12 +335,64 @@ describe("applyEdits: replace", () => {
     expect(asked).toEqual([]);
   });
 
+  it("keeps a font that is not embedded when its encoding holds every new character, with no note (E3 revised)", async () => {
+    const doc = await PDFDocument.create();
+    const { helvetica } = await fonts(doc);
+    doc.addPage([300, 300]).drawText("Page 1", { x: 50, y: 200, size: 24, font: helvetica });
+    const before = await doc.save();
+    const { source, asked } = liberationSource();
+    const fontful = new PdfiumAdapter(source, wasm);
+    const old = run(await fontful.listRuns(before, 0), "Page 1");
+    // "o", "n" and "e" are drawn nowhere in the file, so only the trial can keep Helvetica.
+    const result = await fontful.applyEdits(before, [{ kind: "replace", target: locator(old), text: "Page one" }]);
+    // Far wider than "Page 1", so E4 notes runs-past-end. There is no font note.
+    expect(result.notes).toEqual([{ kind: "runs-past-end", edit: 0 }]);
+    expect(asked).toEqual([]);
+    expect(run(await fontful.listRuns(result.bytes, 0), "Page one").fontName).toBe("Helvetica");
+    // The trial's scratch page is gone again.
+    expect((await PDFDocument.load(result.bytes)).getPageCount()).toBe(1);
+  });
+
+  it("keeps the proven-present rule for an embedded font: an undrawn letter substitutes, a drawn one does not", async () => {
+    const { source } = liberationSource();
+    const fontful = new PdfiumAdapter(source, wasm);
+    const before = await threeLines();
+    // The first edit embeds LiberationSans, drawing "Hello Ω" in it.
+    const first = await fontful.applyEdits(before, [
+      { kind: "replace", target: locator(run(await fontful.listRuns(before, 0), "Hello there world")), text: "Hello Ω" },
+    ]);
+    const embedded = run(await fontful.listRuns(first.bytes, 0), "Hello Ω");
+    expect(embedded.fontName).toBe("LiberationSans");
+    const fontNotes = (notes: { kind: string }[]) => notes.filter((n) => n.kind === "font-substituted");
+    const kept = await fontful.applyEdits(first.bytes, [{ kind: "replace", target: locator(embedded), text: "Ω Hello" }]);
+    expect(fontNotes(kept.notes)).toEqual([]);
+    const swapped = await fontful.applyEdits(first.bytes, [{ kind: "replace", target: locator(embedded), text: "Hello Zed" }]);
+    expect(fontNotes(swapped.notes)).toEqual([{ kind: "font-substituted", font: "Arial", edit: 0 }]);
+  });
+
+  it("gives each edit its own notes, tagged with its index (spec 21.2)", async () => {
+    const before = await threeLines();
+    const { source } = liberationSource();
+    const fontful = new PdfiumAdapter(source, wasm);
+    const runs = await fontful.listRuns(before, 0);
+    const result = await fontful.applyEdits(before, [
+      { kind: "replace", target: locator(run(runs, "Hello there world")), text: "Ω one" },
+      { kind: "delete", target: locator(run(runs, "Bold heading")) },
+      { kind: "replace", target: locator(run(runs, "Second line here")), text: "Ω two" },
+    ]);
+    expect(result.notes).toEqual([
+      { kind: "font-substituted", font: "Arial", edit: 0 },
+      { kind: "font-substituted", font: "Arial", edit: 2 },
+    ]);
+  });
+
   it("falls back to PDFium's standard font, with a note, when the font source has nothing", async () => {
     const before = await threeLines();
     const old = run(await engine.listRuns(before, 0), "Bold heading");
-    const result = await engine.applyEdits(before, [{ kind: "replace", target: locator(old), text: "Quiz" }]);
-    expect(result.notes).toEqual([{ kind: "font-substituted", font: "Helvetica-Bold" }]);
-    const now = run(await engine.listRuns(result.bytes, 0), "Quiz");
+    const result = await engine.applyEdits(before, [{ kind: "replace", target: locator(old), text: "QuizΩ" }]);
+    expect(result.notes).toEqual([{ kind: "font-substituted", font: "Helvetica-Bold", edit: 0 }]);
+    const now = (await engine.listRuns(result.bytes, 0)).find((r) => r.text.startsWith("Quiz"));
+    if (!now) throw new Error("The replaced run is missing.");
     expect(now.fontName).toBe("Helvetica-Bold");
     expect(now.colour).toEqual([255, 0, 0]);
     expect(now.fontSize).toBeCloseTo(20, 3);
@@ -351,16 +404,17 @@ describe("applyEdits: replace", () => {
     const fontful = new PdfiumAdapter(source, wasm);
     const runs = await fontful.listRuns(before, 0);
     const result = await fontful.applyEdits(before, [
-      { kind: "replace", target: locator(run(runs, "Bold heading")), text: "Quiz" },
-      { kind: "replace", target: locator(run(runs, "Hello there world")), text: "Jump" },
+      { kind: "replace", target: locator(run(runs, "Bold heading")), text: "QuizΩ" },
+      { kind: "replace", target: locator(run(runs, "Hello there world")), text: "JumpΩ" },
       { kind: "insert", pageIndex: 0, x: 50, y: 500, text: "Fresh", styleFrom: null },
-      { kind: "insert", pageIndex: 0, x: 50, y: 450, text: "Xylophone", styleFrom: locator(run(runs, "Second line here")) },
+      { kind: "insert", pageIndex: 0, x: 50, y: 450, text: "XylophoneΩ", styleFrom: locator(run(runs, "Second line here")) },
     ]);
     const after = await fontful.listRuns(result.bytes, 0);
-    for (const text of ["Quiz", "Jump", "Fresh", "Xylophone"]) expect(run(after, text).fontName).toBe("LiberationSans");
+    for (const text of ["QuizΩ", "JumpΩ", "Fresh", "XylophoneΩ"]) expect(run(after, text).fontName).toBe("LiberationSans");
     expect(result.notes).toEqual([
-      { kind: "font-substituted", font: "Arial Bold" },
-      { kind: "font-substituted", font: "Arial" },
+      { kind: "font-substituted", font: "Arial Bold", edit: 0 },
+      { kind: "font-substituted", font: "Arial", edit: 1 },
+      { kind: "font-substituted", font: "Arial", edit: 3 },
     ]);
   });
 
@@ -376,7 +430,7 @@ describe("applyEdits: replace", () => {
     const strict = new PdfiumAdapter(async () => restricted, wasm);
     const before = await threeLines();
     const old = run(await strict.listRuns(before, 0), "Hello there world");
-    const err = await rejection(strict.applyEdits(before, [{ kind: "replace", target: locator(old), text: "Zebra" }]));
+    const err = await rejection(strict.applyEdits(before, [{ kind: "replace", target: locator(old), text: "ZebraΩ" }]));
     expect(err.code).toBe("failed");
     expect(err.message).toMatch(/does not allow embedding/);
   });
@@ -396,7 +450,7 @@ describe("applyEdits: replace", () => {
     const old = run(await engine.listRuns(before, 0), "Hello there world");
     const text = "Hello there world, and a great deal more";
     const result = await engine.applyEdits(before, [{ kind: "replace", target: locator(old), text }]);
-    expect(result.notes).toContainEqual({ kind: "runs-past-end" });
+    expect(result.notes).toContainEqual({ kind: "runs-past-end", edit: 0 });
     const now = run(await engine.listRuns(result.bytes, 0), text);
     expect(now.bbox[2]).toBeGreaterThan(old.bbox[2] + 10);
     // The same text unsqueezed, inserted at the same place, is wider by 1 / 0.85.
@@ -460,7 +514,7 @@ describe("applyEdits: insert (chip 14 test 6)", () => {
   it("with no styleFrom, draws Arial at 11 point, black: in Node, the standard-font fallback", async () => {
     const before = await threeLines();
     const result = await engine.applyEdits(before, [{ kind: "insert", pageIndex: 0, x: 100, y: 100, text: "New words", styleFrom: null }]);
-    expect(result.notes).toEqual([{ kind: "font-substituted", font: "Helvetica" }]);
+    expect(result.notes).toEqual([{ kind: "font-substituted", font: "Helvetica", edit: 0 }]);
     const added = run(await engine.listRuns(result.bytes, 0), "New words");
     expect(added.fontName).toBe("Helvetica");
     expect(added.fontSize).toBeCloseTo(11, 3);

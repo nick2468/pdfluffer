@@ -136,7 +136,7 @@ export class PdfiumAdapter implements EngineAdapter, TextEditEngine {
       // E3 asks what each font has drawn in the document as it came in, so this is read
       // before the first edit changes anything. A list of deletes never needs it.
       if (edits.some((edit) => edit.kind !== 'delete')) editor.readCoverage();
-      for (const edit of edits) await editor.apply(edit);
+      for (const [index, edit] of edits.entries()) await editor.apply(edit, index);
       return { bytes: editor.finish(), notes: editor.notes };
     } catch (err) {
       throw asEngineError(err);
@@ -588,9 +588,14 @@ interface LoadedFont {
   windows: boolean;
 }
 
+/** A note before it knows which edit caused it. */
+type NoteKind = { kind: 'font-substituted'; font: string } | { kind: 'runs-past-end' };
+
 /** One replay of an edit list over one open document (spec 21.1 E7). */
 class Editor {
   readonly notes: EditNote[] = [];
+  /** The index of the edit being applied, which every note carries (spec 21.2). */
+  private editIndex = 0;
   private readonly coverage = new Map<number, Set<string>>();
   private readonly loaded = new Map<string, LoadedFont>();
   private readonly ownFonts = new Set<number>();
@@ -626,7 +631,8 @@ class Editor {
     }
   }
 
-  async apply(edit: TextEdit): Promise<void> {
+  async apply(edit: TextEdit, index: number): Promise<void> {
+    this.editIndex = index;
     switch (edit.kind) {
       case 'replace':
         return this.replace(edit.target, edit.text);
@@ -707,14 +713,52 @@ class Editor {
   }
 
   /**
-   * E3: the run's own font when every character of the new text is proven present, else the
+   * E3: the run's own font when every character of the new text is proven present, or when the
+   * font is not embedded and its encoding names every character (revised 2026-11-05). Else the
    * closest Windows font. A font this replay loaded is a whole font file, so it draws anything.
    */
   private async fontFor(style: Style, text: string): Promise<number> {
     if (this.ownFonts.has(style.font)) return style.font;
     const drawn = this.coverage.get(style.font);
     if (drawn && [...text].every((ch) => drawn.has(ch))) return style.font;
+    if (style.font && this.encodes(style.font, text)) return style.font;
     return this.load(matchWindowsFont(style.fontName, style.fontFlags), true);
+  }
+
+  /**
+   * E3's trial, for a font that is not embedded. The viewer draws such a font from its own full
+   * copy, so it lacks a character only when the font's encoding cannot name it. PDFium sets the
+   * text in the font on a trial object, on a scratch page added for the purpose, and reads it
+   * back. The same text back means the encoding carried every character. White space is left
+   * out of the comparison: the text reader may add or fold spaces, and every encoding has one.
+   * The scratch page, and the trial object it owns, are gone before this returns.
+   */
+  private encodes(font: number, text: string): boolean {
+    const { m, pdf } = this.doc;
+    if (m.FPDFFont_GetIsEmbedded(font)) return false;
+    const index = this.doc.pageCount;
+    const page = m.FPDFPage_New(this.doc.handle, index, 200, 200);
+    if (!page) return false;
+    try {
+      const object = m.FPDFPageObj_CreateTextObj(this.doc.handle, font, 12);
+      if (!object) return false;
+      if (!this.setText(object, text)) {
+        m.FPDFPageObj_Destroy(object);
+        return false;
+      }
+      m.FPDFPage_InsertObject(page, object);   // the page owns it from here
+      const textPage = m.FPDFText_LoadPage(page);
+      if (!textPage) return false;
+      try {
+        const back = pdf.utf16((buffer, length) => m.FPDFTextObj_GetText(object, textPage, buffer, length));
+        return withoutSpace(back) === withoutSpace(text);
+      } finally {
+        m.FPDFText_ClosePage(textPage);
+      }
+    } finally {
+      m.FPDF_ClosePage(page);
+      m.FPDFPage_Delete(this.doc.handle, index);
+    }
   }
 
   /**
@@ -763,16 +807,9 @@ class Editor {
     const { m, pdf } = this.doc;
     const object = m.FPDFPageObj_CreateTextObj(this.doc.handle, font, style.fontSize);
     if (!object) throw new EngineError('failed', "The PDF text engine could not create the new text.");
-    const bytes = (text.length + 1) * 2;
-    const buffer = pdf.malloc(bytes);
-    try {
-      m.pdfium.stringToUTF16(text, buffer, bytes);
-      if (!m.FPDFText_SetText(object, buffer)) {
-        m.FPDFPageObj_Destroy(object);
-        throw new EngineError('failed', "The PDF text engine could not set the new text.");
-      }
-    } finally {
-      pdf.free(buffer);
+    if (!this.setText(object, text)) {
+      m.FPDFPageObj_Destroy(object);
+      throw new EngineError('failed', "The PDF text engine could not set the new text.");
     }
     pdf.setF32(pdf.scratch, matrix);
     m.FPDFPageObj_SetMatrix(object, pdf.scratch);
@@ -785,6 +822,19 @@ class Editor {
       m.FPDFPageObj_SetStrokeWidth(object, style.strokeWidth);
     }
     return object;
+  }
+
+  /** `FPDFText_SetText` with the text copied in as UTF-16. False when PDFium refuses it. */
+  private setText(object: number, text: string): boolean {
+    const { m, pdf } = this.doc;
+    const bytes = (text.length + 1) * 2;
+    const buffer = pdf.malloc(bytes);
+    try {
+      m.pdfium.stringToUTF16(text, buffer, bytes);
+      return Boolean(m.FPDFText_SetText(object, buffer));
+    } finally {
+      pdf.free(buffer);
+    }
   }
 
   /**
@@ -808,11 +858,16 @@ class Editor {
     m.FPDFPageObj_SetMatrix(object, pdf.scratch);
   }
 
-  /** Each note once, in the order first met. */
-  private note(note: EditNote): void {
+  /** Each note once per edit, tagged with that edit's index, in the order met (spec 21.2). */
+  private note(kind: NoteKind): void {
+    const note = { ...kind, edit: this.editIndex } as EditNote;
     const key = JSON.stringify(note);
     if (!this.notes.some((n) => JSON.stringify(n) === key)) this.notes.push(note);
   }
+}
+
+function withoutSpace(text: string): string {
+  return text.replace(/\s+/g, "");
 }
 
 function asEngineError(err: unknown): EngineError {

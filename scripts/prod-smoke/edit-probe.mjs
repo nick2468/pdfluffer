@@ -11,9 +11,11 @@
 //
 // It proves: the app starts without fetching PDFium's chunk or its .wasm, and fetches both from
 // its own origin at the first engine call; listRuns finds "Page 1" in samples/three-pages.pdf;
-// a replace of it with "Page one" runs, with its font notes; that edit, run through
-// SessionManager.runOp, loads into the tab, where PDF.js reads "Page one" and not "Page 1";
-// the new text is drawn in a real Windows font, not a PDFium standard font; renderPage draws;
+// a replace of it with "Page one" runs and keeps the run's own Helvetica-Bold with no font note
+// (E3 revised, chip 15: the font is not embedded and its encoding holds every letter); that
+// edit, run through SessionManager.runOp, loads into the tab, where PDF.js reads "Page one" and
+// not "Page 1"; a second replace with a character Helvetica's encoding cannot name ("Ω") is
+// drawn in a real Windows font, not a PDFium standard font, with a note; renderPage draws;
 // readSystemFont('arial.ttf') answers through the engine's own font source; and nothing logs a
 // console error, a CSP violation or an exception.
 //
@@ -110,19 +112,29 @@ try {
   const locator = JSON.stringify({ pageIndex: 0, text: target.text, bbox: target.bbox });
   const edits = `[{ kind: 'replace', target: ${locator}, text: 'Page one' }]`;
 
-  // 2. applyEdits, and its font notes.
-  const applied = await c.ev(`(async () => {
-    const r = await ${ENGINE}.applyEdits(${BYTES}, ${edits});
+  // 2. applyEdits, and its notes. Under the revised E3 the run keeps its own font.
+  const applyAndList = (editList) => c.ev(`(async () => {
+    const r = await ${ENGINE}.applyEdits(${BYTES}, ${editList});
     const runs = await ${ENGINE}.listRuns(r.bytes, 0);
     return JSON.stringify({ notes: r.notes, size: r.bytes.length, runs: runs.map(x => ({ text: x.text, font: x.fontName, size: x.fontSize })) });
   })()`);
+  const applied = await applyAndList(edits);
   const result = typeof applied === "string" ? JSON.parse(applied) : null;
   check("applyEdits replaces \"Page 1\" with \"Page one\"", result?.runs.some((r) => r.text === "Page one") && !result.runs.some((r) => r.text === "Page 1"),
     result ? JSON.stringify(result.runs) : JSON.stringify(applied));
-  console.log(`      font notes: ${JSON.stringify(result?.notes)}; the file went from ${original.length} to ${result?.size} bytes`);
+  console.log(`      notes: ${JSON.stringify(result?.notes)}; the file went from ${original.length} to ${result?.size} bytes`);
   const font = result?.runs.find((r) => r.text === "Page one")?.font ?? "";
-  check("the new text is drawn in a Windows font, not a PDFium standard font",
-    font !== "" && !/^(Helvetica|Times|Courier)/.test(font), font);
+  check("\"Page one\" keeps the run's own font, with no font note (E3 revised)",
+    font === target.fontName && !result.notes.some((n) => n.kind === "font-substituted"), `${font}, was ${target.fontName}`);
+
+  // A character outside Helvetica's encoding proves the Windows font path still works.
+  const omega = await applyAndList(`[{ kind: 'replace', target: ${locator}, text: 'Page Ω' }]`);
+  const swapped = typeof omega === "string" ? JSON.parse(omega) : null;
+  const swappedFont = swapped?.runs.find((r) => r.text === "Page Ω")?.font ?? "";
+  check("\"Page Ω\" is drawn in a Windows font, not a PDFium standard font, with a note",
+    swappedFont !== "" && !/^(Helvetica|Times|Courier)/.test(swappedFont)
+      && swapped.notes.some((n) => n.kind === "font-substituted" && n.edit === 0),
+    `${swappedFont}; notes ${JSON.stringify(swapped?.notes)}; ${swapped?.size} bytes`);
 
   // 3. The same edit through runOp: the result loads in the tab, and PDF.js reads it back.
   const tabId = await c.ev(`${HOOK}.manager.getSnapshot().activeTabId`);
