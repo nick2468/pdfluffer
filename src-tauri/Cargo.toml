@@ -1,6 +1,6 @@
 [package]
 name = "pdfluffer"
-version = "0.1.2"
+version = "0.2.0"
 description = "PDFluffer, a no-nag PDF reader and light editor"
 authors = ["Nicholas Walker"]
 edition = "2021"

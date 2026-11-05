@@ -18,6 +18,8 @@ Screenshots: [nick2468.github.io/pdfluffer](https://nick2468.github.io/pdfluffer
   rename them.
 - Highlights, draws, adds notes and pictures.
 - Reorders and deletes pages, inserts another PDF, rotates pages.
+- **Edit text...** changes, inserts and deletes text line by line, in the page's own font
+  where it can, with undo and redo.
 - **Flatten** makes the answers, notes and signatures a permanent part of the page before
   you send a form on.
 - **Make text selectable (OCR)** reads a scanned PDF with the OCR built into Windows and
@@ -62,9 +64,10 @@ npm run tauri build    # the installer, in src-tauri/target/release/bundle/nsis/
 ```
 
 `npm run build:signed` makes the signed installer and needs Nick logged in to SimplySign
-(`docs/releasing.md`). `npm run smoke:prod`, `smoke:ocr` and `node scripts/prod-smoke/backup.mjs` drive the
-built release through its own debugging port, with no one at the window, and check saving,
-single instance, session restore, OCR placement and the backup file. Close PDFluffer first.
+(`docs/releasing.md`). `npm run smoke:prod`, `smoke:ocr`, `smoke:edit` and
+`node scripts/prod-smoke/backup.mjs` drive the built release through its own debugging port,
+with no one at the window, and check saving, single instance, session restore, OCR
+placement, text editing and the backup file. Close PDFluffer first.
 
 ## How it is made
 
@@ -72,25 +75,30 @@ PDFluffer is a [Tauri 2](https://tauri.app) desktop app with a React and TypeScr
 Each tab hosts the unmodified [PDF.js](https://mozilla.github.io/pdf.js/) viewer, the same
 engine Firefox uses, inside an iframe. Reading, forms, signatures and notes are PDF.js's
 own. PDFluffer adds the window, the tabs, file handling, the save rules, session restore
-and the Document tools. Page operations use [pdf-lib](https://pdf-lib.js.org). OCR uses
-`Windows.Media.Ocr` from the Rust side.
+and the Document tools. Page operations use [pdf-lib](https://pdf-lib.js.org). Text editing
+uses [PDFium](https://pdfium.googlesource.com/pdfium/), Chrome's PDF engine, through
+`@embedpdf/pdfium`. OCR uses `Windows.Media.Ocr` from the Rust side.
 
 The design is written down before the code: `pdfluffer-concept.md` is the audit and the
 plan, `pdfluffer-spec.md` the contract, `pdfluffer-plan.md` the checklist, and
 `BUILD-NOTES.md` the record of what was found while building, including the few places
-the spec was wrong. The code was built in twelve "chips" (`chips/`), each a
+the spec was wrong. The code was built in fifteen "chips" (`chips/`), each a
 self-contained task given to an AI model, with every change reviewed against the spec.
 
 ## Known limits
 
 - PDF.js is vendored unmodified in `public/pdfjs/`, so an upgrade is a folder swap. Its
   wording and toolbar are its own.
-- Editing existing text and images is out of scope. Add text over the top, or go back
-  to the source document.
+- Text is edited one line at a time and never reflows, so longer text can overlap what
+  follows it. When the page's own font lacks a letter you type, that line switches to a
+  similar Windows font, which looks a little different and adds about half a megabyte to
+  a megabyte to the file. Text in form fields, notes and scanned pages cannot be edited.
+- Editing images is out of scope.
 - OCR reads print, not handwriting, and Latin alphabets only.
 - Windows only.
 
 ## Licence
 
-MIT. See `LICENSE`. PDF.js is Apache 2.0 and pdf-lib is MIT; their notices are in their
-own folders under `public/pdfjs/` and `node_modules/`.
+MIT. See `LICENSE`. PDF.js is Apache 2.0, pdf-lib is MIT, and `@embedpdf/pdfium` is MIT
+over PDFium's BSD-style licence; their notices are in their own folders under
+`public/pdfjs/` and `node_modules/`.

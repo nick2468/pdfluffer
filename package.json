@@ -1,7 +1,7 @@
 {
   "name": "pdfluffer",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "tauri": "tauri",
     "smoke:prod": "node scripts/prod-smoke/run.mjs",
     "smoke:ocr": "node scripts/prod-smoke/ocr.mjs",
+    "smoke:edit": "node scripts/prod-smoke/edit.mjs",
     "build:signed": "node scripts/build-signed.mjs"
   },
   "dependencies": {
