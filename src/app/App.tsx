@@ -9,6 +9,7 @@ import ProgressDialog from "./ProgressDialog";
 import SavedSignaturesDialog from "./SavedSignaturesDialog";
 import SettingsDialog from "./SettingsDialog";
 import TabBar from "./TabBar";
+import TextEditorDialog from "./TextEditorDialog";
 import { useServices, useSession } from "./services";
 
 export default function App() {
@@ -16,6 +17,9 @@ export default function App() {
   const { tabs, activeTabId } = useSession(manager);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [signaturesOpen, setSignaturesOpen] = useState(false);
+  // Spec 21.5. A fresh dialog for every opening, so no state carries over between them.
+  const [editor, setEditor] = useState<{ tabId: string; n: number } | null>(null);
+  const closeEditor = useCallback(() => setEditor(null), []);
   const active = tabs.find((t) => t.id === activeTabId);
 
   const hostRef = useCallback((el: HTMLDivElement | null) => manager.setViewerHost(el), [manager]);
@@ -46,6 +50,7 @@ export default function App() {
         activeTabId={activeTabId}
         onSettings={() => setSettingsOpen(true)}
         onSavedSignatures={() => setSignaturesOpen(true)}
+        onEditText={(tabId) => setEditor((old) => old ?? { tabId, n: Date.now() })}
       />
       {showBanner && (
         <div className="banner" role="status">
@@ -64,6 +69,7 @@ export default function App() {
       <ProgressDialog />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <SavedSignaturesDialog open={signaturesOpen} onClose={() => setSignaturesOpen(false)} />
+      {editor && <TextEditorDialog key={editor.n} tabId={editor.tabId} onClose={closeEditor} />}
     </div>
   );
 }

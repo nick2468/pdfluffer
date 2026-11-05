@@ -617,6 +617,32 @@ describe("applyEdits: replay and stale locators", () => {
   });
 });
 
+describe("replay speed (chip 15 decision rule)", () => {
+  it("replays one edit, and a list of 20, over a 20-page file well inside a second", async () => {
+    const doc = await PDFDocument.create();
+    const { helvetica } = await fonts(doc);
+    for (let p = 1; p <= 20; p++) {
+      const page = doc.addPage([612, 792]);
+      for (let line = 0; line < 40; line++) {
+        page.drawText(`Page ${p}, line ${line + 1} of a long document`, { x: 50, y: 750 - line * 18, size: 11, font: helvetica });
+      }
+    }
+    const before = await doc.save();
+    const runs = await engine.listRuns(before, 9);
+    const edits = runs.slice(0, 20).map((r, i) => ({ kind: "replace" as const, target: locator(r), text: `Edited ${i}` }));
+    await engine.applyEdits(before, edits.slice(0, 1));   // warm
+    const time = async (list: typeof edits) => {
+      const start = performance.now();
+      await engine.applyEdits(before, list);
+      return performance.now() - start;
+    };
+    const one = await time(edits.slice(0, 1));
+    const twenty = await time(edits);
+    expect(one).toBeLessThan(1000);
+    expect(twenty).toBeLessThan(1000);
+  });
+});
+
 describe("PDFium's heap", () => {
   // The chip asks for 200 rounds. That cannot show a small leak: PDFium's heap starts with
   // about 18 MB of room, and a leaked page only grew it after some 1,400 listings when this

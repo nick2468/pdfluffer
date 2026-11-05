@@ -4,20 +4,25 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { version as appVersion } from "../../package.json";
-import { aboutDialog, BUTTON, CLEAR_HISTORY_DIALOG, type DialogText } from "../session/dialogTexts";
+import { aboutDialog, BUTTON, CLEAR_HISTORY_DIALOG, TEXT_EDITOR, type DialogText } from "../session/dialogTexts";
 import type { TabSnapshot } from "../session/DocumentSession";
 import { useServices, useSession } from "./services";
 
 const PDFJS_VERSION = "6.3.289";
 
 export default function AppMenu(
-  { active, onSettings, onSavedSignatures }:
-  { active: TabSnapshot | undefined; onSettings: () => void; onSavedSignatures: () => void },
+  { active, onSettings, onSavedSignatures, onEditText }:
+  {
+    active: TabSnapshot | undefined; onSettings: () => void; onSavedSignatures: () => void;
+    onEditText: (tabId: string) => void;
+  },
 ) {
   const { manager, dialogs, files, engines, tools, ocr } = useServices();
   const { recent } = useSession(manager);
   // Spec 13.2: only the tools some engine can serve. The registries never change.
   const documentTools = useMemo(() => tools.available(engines), [tools, engines]);
+  // Spec 21.5: Edit text... shows when some engine edits text.
+  const canEditText = useMemo(() => manager.canEditText(), [manager]);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -96,6 +101,17 @@ export default function AppMenu(
           <Item label="Close tab" keys="Ctrl+W" disabled={!active} onClick={run(() => active && manager.closeTab(active.id))} />
           <hr />
           <div className="menu-heading" role="presentation">Document</div>
+          {canEditText && (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item nested-item"
+              disabled={!ready}
+              onClick={run(() => active && onEditText(active.id))}
+            >
+              <span className="menu-label">{TEXT_EDITOR.menuItem}</span>
+            </button>
+          )}
           {documentTools.map((tool) => (
             <button
               key={tool.id}

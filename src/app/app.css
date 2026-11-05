@@ -491,3 +491,111 @@ button:focus-visible, .tab:focus-visible {
   margin: 0 0 0 24px;
   color: var(--danger);
 }
+
+/* Spec 21.5, the text editor. A modal dialog that fills the window. */
+.text-editor {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: var(--bg);
+  color: var(--text);
+  flex-direction: column;
+}
+.text-editor[open] { display: flex; }
+.text-editor::backdrop { background: rgba(0, 0, 0, 0.3); }
+
+.text-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bar-bg);
+  border-bottom: 1px solid var(--border);
+}
+.text-editor-title {
+  margin: 0 10px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.text-editor-toolbar button {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--menu-bg);
+  color: var(--text);
+}
+.text-editor-toolbar button:hover:not(:disabled) { background: var(--tab-hover); }
+.text-editor-toolbar button:disabled { color: var(--muted); opacity: 0.6; cursor: default; }
+.text-editor-toolbar button[aria-pressed="true"],
+.text-editor-toolbar button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.text-editor-page-number { min-width: 90px; text-align: center; color: var(--muted); }
+.text-editor-gap { width: 12px; }
+.text-editor-spacer { flex: 1; }
+
+.text-editor-notes {
+  min-height: 30px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.text-editor-notes p { margin: 2px 0; }
+
+/* The padding is AREA_PADDING in TextEditorDialog.tsx. */
+.text-editor-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 16px;
+  background: var(--tab-bg);
+}
+.text-editor-message { color: var(--muted); }
+.text-editor-page {
+  position: relative;
+  flex: none;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+.text-editor-page canvas { display: block; }
+.text-editor-overlay { position: absolute; inset: 0; }
+.text-editor-overlay.inserting, .text-editor-overlay.inserting .text-run { cursor: crosshair; }
+
+.text-run {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(47, 98, 199, 0.45);
+  border-radius: 2px;
+  background: transparent;
+  cursor: text;
+}
+.text-run:hover { background: rgba(47, 98, 199, 0.1); }
+.text-run.selected { border: 2px solid #2f62c7; background: rgba(47, 98, 199, 0.14); }
+
+/* The box sits on the white page, so its colours are fixed in both themes. */
+.text-input {
+  position: absolute;
+  z-index: 1;
+  padding: 2px;
+  border: 2px solid #2f62c7;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #000000;
+  font-family: Arial, Helvetica, sans-serif;
+  outline: none;
+}

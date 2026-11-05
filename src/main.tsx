@@ -28,7 +28,7 @@ async function boot(): Promise<void> {
   engines.register(new PdfLibAdapter());
   // Phase 6 (spec 21). Registering it costs nothing either: PDFium and its .wasm load on the
   // first text edit. It reads Windows fonts through the file adapter, so it never imports one.
-  // No tool yet: the editor dialog is chip 15.
+  // The editor dialog reaches it through the session manager (spec 21.5).
   engines.register(new PdfiumAdapter((fileName) => files.readSystemFont(fileName)));
   const tools = new ToolRegistry();
   for (const tool of documentTools) tools.register(tool);

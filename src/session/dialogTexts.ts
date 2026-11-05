@@ -220,6 +220,7 @@ export const TEXT_EDITOR = {
   cancel: "Cancel",
   insertHint: "Click where the new text should start. Press Escape to stop.",
   newText: "New text",
+  changeText: "Change this text",
   page: (page: number, of: number) => `Page ${page} of ${of}`,
   fontSubstituted: (font: string) => `This text's own font lacks some of these letters, so it now uses ${font}.`,
   runsPastEnd: "The new text is longer than the old, so it may overlap the text after it.",
