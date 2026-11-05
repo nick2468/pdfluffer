@@ -105,10 +105,10 @@ Built after chip 13. Released as 0.2.0 when complete.
 - [x] P6.3 `applyEdits`: replace, delete, insert, the squeeze and the notes, with tests (spec 21.3)
 - [x] P6.4 `read_system_font`, `FileAdapter.readSystemFont`, font coverage and matching, with tests (spec 21.4)
 - [x] P6.5 A release-build probe: PDFium loads, edits a sample and saves, no CSP error (chip 14)
-- [ ] P6.6 The editor dialog, its toolbar and the input boxes (spec 21.5, chip 15)
-- [ ] P6.7 Undo and redo, and the history rule (spec 21.1 E5, 21.5)
-- [ ] P6.8 `scripts/prod-smoke/edit.mjs`: replace, insert, delete, undo, save, reopen, in the release build
-- [ ] P6.9 Version 0.2.0, an unsigned installer, all smoke tests green
+- [x] P6.6 The editor dialog, its toolbar and the input boxes (spec 21.5, chip 15)
+- [x] P6.7 Undo and redo, and the history rule (spec 21.1 E5, 21.5)
+- [x] P6.8 `scripts/prod-smoke/edit.mjs`: replace, insert, delete, undo, save, reopen, in the release build
+- [x] P6.9 Version 0.2.0, an unsigned installer, all smoke tests green
 - [ ] P6.10 Orchestrator: signed build, the user's install walk, release v0.2.0
 - [ ] P6.11 **USER** Edit text in a real PDF and check it in Acrobat, Chrome and Edge (`docs/user-checks-edit.md`)
 

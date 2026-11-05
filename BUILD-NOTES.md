@@ -784,7 +784,8 @@ Print, for reference: `printButton` (579) and `secondaryPrint` (610). These stay
       the third family.
     - **Notes come once each,** in the order first met, for the whole list. An `EditNote`
       carries no edit number, so chip 15 shows the last edit's notes by comparing the
-      replay with and without it, or the spec grows a field.
+      replay with and without it, or the spec grows a field. **Superseded by chip 15**
+      (decision 32): each note carries `edit` and appears once per edit.
     - **A replace with only white space is a delete,** and an insert with only white
       space does nothing.
     - **An insert's `x` and `y` are where its baseline starts.** With `styleFrom` it copies
@@ -1311,6 +1312,89 @@ time; if it ever flakes the same way, give it the same fix.
       `runGrouping.ts` and `fontMatch.ts` hold the pure rules with their tests.
     - The Write tool of the session that built chip 14 refused paths in the main checkout
       (it had been opened in a worktree), so its files were written through the shell. No
+      worktree was used for any build, test or commit.
+
+32. **The text editor, its history and the revised E3** (chip 15, plan P6.6 to P6.9).
+    - **E3's trial works, so E3 is revised as ruled.** For a font that is not embedded,
+      PDFium sets the new text on a trial object in that font, on a scratch page added for the
+      purpose and deleted again, and reads it back with `FPDFTextObj_GetText`. Evidence from
+      the unit tests, pdf-lib's Helvetica (WinAnsi): "Page one" reads back as "Page one"; "Ω"
+      reads back as "ÿ" (U+00FF), so "Hello Ω" gives "Hello ÿ" and the trial substitutes. White
+      space is left out of the comparison. `FPDFTextObj_GetText` reads only objects on a page,
+      which is why the scratch page is needed; a test checks the saved file still has one page.
+      Embedded fonts keep the proven-present rule (a test on an embedded LiberationSans run).
+      The trial runs only after proven-present fails, so most edits never make a page.
+    - **`EditNote.edit`** is the index of the edit in the list, and the same note can now
+      appear once for each edit. The history shows only the newest edit's notes after an edit
+      or a redo, and none after an undo: the newest edit left is not the one the user acted on.
+    - **The history forks.** `beginTextEdit` hands the dialog a copy of the tab's kept
+      history (`TextEditHistory.fork()`), and Done hands that copy back. So Cancel can never
+      change the kept history, and "new edits" means the copy's list differs from the list it
+      opened with (an undo then redo back to it counts as no change).
+    - **The identity rule is tested on a real path.** The kept history continues only while the
+      tab holds the very bytes Done produced. A save, Revert and other operations also clear
+      it explicitly, so a mutant that dropped the identity check passed every test until one
+      was added for the path that changes the bytes without clearing: a save the user
+      cancelled after the export had pulled in form edits.
+    - **Done that fails keeps the editor open** (decision rule "loses no user data"). The
+      chip says `finishTextEdit` clears busy. On a failure it does not: the manager shows the
+      dialog (encrypted, or the general one), returns false, and the editor stays open with
+      every edit, still holding the tab busy. Cancel clears it. A success clears busy after
+      the reload, as `runOp` does. Done can only fail if the engine refuses at the end what it
+      accepted edit by edit, so this is a guard, not a path anyone is expected to see.
+    - **The editor's keys are listened for on the window,** not on the dialog. Found in the
+      browser harness: closing an input box removes the focused element, focus falls to the
+      page body outside the dialog, and the Delete key and Ctrl+Z went nowhere. The handler
+      ignores keys in an input box and while a question (`dialog.choice-dialog[open]`) is on
+      top. Enter and Escape in a box also put the focus back on the dialog.
+    - **One action queue.** Every click, key and box edit runs in order through one promise
+      chain. A box that loses focus applies its edit, and the click that took the focus (Done,
+      Cancel, Undo, another run) runs after it, so Done waits for the edit, as 21.5 says. Done
+      and Cancel are never disabled, so a click is never lost to a re-render.
+    - **The window losing focus is not the user leaving the box.** `onBlur` does nothing when
+      `document.hasFocus()` is false: the box keeps its text and gets the focus back with the
+      window. Otherwise a smoke test on the user's desktop, or an Alt+Tab, would apply half
+      typed text. The window-close guard still counts typed text as new edits.
+    - **Undo and Redo after the limit.** The history counts the steps undo may still take,
+      at most 20, and redo gives each one back. A new edit after an exhausted undo can be
+      undone again (one step). Tests cover both.
+    - **The insert box** sits with its baseline about one font size below its top edge, at
+      the click. Its font size is the nearest editable run's, or 11 point, on screen, with a
+      floor of 11 CSS pixels so a tiny run can still be read while typing.
+    - **The dialog opens once under React's development double-run** of effects: a ref
+      survives the simulated remount, so `beginTextEdit` is called once. A second call would
+      find the tab busy and close the editor.
+    - **The menu item is not a Tool.** It needs React to open a dialog, so it is an item in
+      `AppMenu`, shown when `manager.canEditText()` and enabled when the tab is ready.
+    - **Replay speed** (chip decision rule). A unit test builds 20 pages of 40 lines in
+      Helvetica and times `applyEdits` in Node: one edit about 24 ms, twenty edits about
+      52 ms (three runs: 25.1 / 53.8, 23.7 / 51.3, 24.4 / 51.6). No document is cached
+      between calls. The test fails above one second.
+    - **PDFium and PDF.js agree on where the text sits** (chip decision rule), measured in the
+      harness after the edits on `three-pages.pdf` page 1. PDFium's boxes are ink boxes,
+      PDF.js gives the origin and advance width, so they differ by the glyphs' side bearings
+      and descenders and nothing more. "Page A" at 96 pt: PDF.js origin x 150, baseline 400,
+      right 444.15; PDFium ink 156.59 to 442.42 across, bottom 379.26 (the "g" descends about
+      21 pt, Helvetica-Bold's 218/1000 of 96; the "P" starts about 7 pt in, its 76/1000).
+      "Added line" at 96 pt: PDF.js origin 120.88, baseline 167.17; PDFium ink left 122.62,
+      bottom 165.93 (round letters overshoot the baseline by about 1 pt).
+    - **The browser harness** has no Windows fonts, so a substitute there is PDFium's
+      standard Helvetica, which cannot draw "Ω" either and shows "ÿ". The desktop app uses
+      Arial; `smoke:edit` step 10 and `edit-probe.mjs` prove it in the release build.
+    - **The revised E3 shrinks the common edit.** `edit-probe.mjs`'s "Page 1" to "Page one"
+      replace now keeps Helvetica-Bold and takes the file from 1,809 to 2,341 bytes, where
+      chip 14's substitute Arial Bold took it to 564,418. The probe's new "Page Ω" replace
+      still embeds Arial Bold (564,460 bytes), with a note naming it.
+    - **The release build, 2026-11-05** (unsigned, `npm run tauri build` from a tree identical
+      to the committed code): `src-tauri/target/release/bundle/nsis/PDFluffer_0.2.0_x64-setup.exe`,
+      9,575,323 bytes, SHA-256
+      `2526fe3870765311cfcd19340f03621a094b1d1aa46785aa031f78a7d0aeccce`. Against it:
+      `smoke:edit` 34 of 34, `smoke:prod` 24 of 24, `smoke:ocr` 33 of 33, `backup.mjs`
+      14 of 14, `edit-probe.mjs` 16 of 16 (one check added for the "Ω" path), each on the
+      first run.
+    - **The harness ran on port 1430** for this chip: another project's Vite held 1420.
+    - The Write and Edit tools of this session refused paths in the main checkout (it had been
+      opened in a worktree), as for chip 14, so files were written through the shell. No
       worktree was used for any build, test or commit.
 
 ## Questions for the user
