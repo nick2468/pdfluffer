@@ -7,7 +7,7 @@ import type { EngineRegistry } from "../engine/engineRegistry";
 import { isTextEditEngine, type TextEditEngine } from "../engine/textEdit";
 import { FileError, type FileAdapter, type FileRef } from "../files/FileAdapter";
 import { hasDigitalSignature } from "../util/hasDigitalSignature";
-import type { PageImage, ShortcutName, Viewer } from "../viewer/Viewer";
+import type { PageImage, RotateDelta, ShortcutName, Viewer } from "../viewer/Viewer";
 import { askToSave, confirmCloseAll, neighbourAfterClose } from "./closeFlow";
 import {
   BUTTON, ENCRYPTED_DIALOG, externalLinkDialog, OPEN_ELSEWHERE_DIALOG, OPERATION_FAILED_DIALOG,
@@ -249,6 +249,10 @@ export class SessionManager {
       }),
       viewer.on("shortcut", (name) => { void this.handleShortcut(name); }),
       viewer.on("externallink", (url) => { void this.confirmExternalLink(url); }),
+      // Spec 22.1: PDF.js's own rotate commands do what the Rotate all pages tools do.
+      viewer.on("rotaterequest", (delta) => {
+        if (tab.viewer === viewer) void this.rotateAll(tab.id, delta);
+      }),
       viewer.on("error", (message) => { console.error(`Viewer error in ${tab.name}:`, message); }),
     );
   }
@@ -350,6 +354,22 @@ export class SessionManager {
   hasStructuralChanges(tabId: string): boolean {
     const tab = this.find(tabId);
     return tab?.status === 'ready' && tab.viewer?.hasStructuralChanges() === true;
+  }
+
+  /**
+   * Rotate all pages right or left (spec 13.5), and PDF.js's own rotate commands (spec 22.1),
+   * which must do exactly the same. A busy tab ignores it without a word, so a key held down
+   * cannot queue turns. Then the Save-first guard (spec 20.5a), then runOp with its guards.
+   * True when the pages turned.
+   */
+  async rotateAll(tabId: string, degrees: RotateDelta): Promise<boolean> {
+    const tab = this.find(tabId);
+    if (!tab || tab.status !== 'ready' || !tab.viewer || tab.busy) return false;
+    if (tab.viewer.hasStructuralChanges()) {
+      await this.ask(SAVE_FIRST_DIALOG);
+      return false;
+    }
+    return this.runOp(tabId, { kind: 'pages.rotate', pages: 'all', degrees });
   }
 
   /**

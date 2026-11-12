@@ -1247,6 +1247,96 @@ describe("SessionManager runOp (spec 13.3)", () => {
   });
 });
 
+// Spec 22.1: PDF.js's own rotate commands turn the pages, exactly as the Rotate all tools do
+
+/** Lets the manager's handler for a viewer event run to its end. */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+describe("SessionManager rotateAll and PDF.js's rotate commands (spec 22.1)", () => {
+  it("rotaterequest 90 runs pages.rotate on all pages, 90 degrees, and the tab becomes unsaved", async () => {
+    const { engine, viewer, tab } = await openWithEngine();
+    viewer.emit("rotaterequest", 90);
+    await vi.waitFor(() => expect(viewer.loads).toHaveLength(2));
+    expect(engine.runs.map((r) => r.op)).toEqual([{ kind: "pages.rotate", pages: "all", degrees: 90 }]);
+    expect(tab(0).dirty).toBe(true);
+    expect(viewer.loads[1].bytes).toEqual(ENGINE_BYTES);
+    expect(viewer.loads[1].view?.rotation).toBe(0);
+  });
+
+  it("rotaterequest -90 turns every page the other way", async () => {
+    const { engine, viewer } = await openWithEngine();
+    viewer.emit("rotaterequest", -90);
+    await vi.waitFor(() => expect(engine.runs).toHaveLength(1));
+    expect(engine.runs[0].op).toEqual({ kind: "pages.rotate", pages: "all", degrees: -90 });
+  });
+
+  it("rotateAll is what the tools run, and gives the same operation", async () => {
+    const { manager, engine, id } = await openWithEngine();
+    expect(await manager.rotateAll(id, 90)).toBe(true);
+    expect(await manager.rotateAll(id, -90)).toBe(true);
+    expect(engine.runs.map((r) => r.op)).toEqual([
+      { kind: "pages.rotate", pages: "all", degrees: 90 },
+      { kind: "pages.rotate", pages: "all", degrees: -90 },
+    ]);
+  });
+
+  it("a busy tab ignores the request, without a dialog", async () => {
+    const { manager, engine, viewer, id } = await openWithEngine();
+    const held = gate();
+    engine.gate = held.promise;
+    const first = manager.rotateAll(id, 90);
+    viewer.emit("rotaterequest", 90);
+    viewer.emit("rotaterequest", -90);
+    await settle();
+    held.open();
+    expect(await first).toBe(true);
+    await settle();
+    expect(engine.runs.map((r) => r.op)).toEqual([ROTATE]);
+    expect(viewer.loads).toHaveLength(2);
+  });
+
+  it("Save first stops it while pages moved in the sidebar are unsaved", async () => {
+    const { dialogs, engine, viewer, tab } = await openWithEngine();
+    viewer.structuralChanges = true;
+    dialogs.answer("ok");
+    viewer.emit("rotaterequest", 90);
+    await vi.waitFor(() => expect(dialogs.asked).toEqual([asked(SAVE_FIRST_DIALOG)]));
+    await settle();
+    expect(engine.runs).toEqual([]);
+    expect(viewer.loads).toHaveLength(1);
+    expect(tab(0).dirty).toBe(false);
+  });
+
+  it("the signature guard stops it, and Cancel changes nothing", async () => {
+    const { dialogs, engine, viewer, tab } = await openWithEngine([[A, SIGNED]]);
+    dialogs.answer("cancel");
+    viewer.emit("rotaterequest", 90);
+    await vi.waitFor(() => expect(dialogs.asked).toEqual([asked(OPERATION_GUARD_DIALOG)]));
+    await settle();
+    expect(engine.runs).toEqual([]);
+    expect(tab(0).dirty).toBe(false);
+  });
+
+  it("the signature guard's Continue anyway turns the pages", async () => {
+    const { dialogs, engine, viewer, tab } = await openWithEngine([[A, SIGNED]]);
+    dialogs.answer("continue");
+    viewer.emit("rotaterequest", 90);
+    await vi.waitFor(() => expect(viewer.loads).toHaveLength(2));
+    expect(engine.runs.map((r) => r.op)).toEqual([ROTATE]);
+    expect(tab(0).dirty).toBe(true);
+  });
+
+  it("Revert to saved undoes the turn", async () => {
+    const { manager, dialogs, viewer, id, tab } = await openWithEngine();
+    viewer.emit("rotaterequest", 90);
+    await vi.waitFor(() => expect(tab(0).dirty).toBe(true));
+    dialogs.answer("continue");
+    await manager.revert(id);
+    expect(tab(0).dirty).toBe(false);
+    expect(last(viewer.loads)?.bytes).toEqual(PLAIN);
+  });
+});
+
 // Spec 13.5: the page the Rotate this page tool works on
 
 describe("SessionManager currentPage", () => {

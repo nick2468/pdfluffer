@@ -5,8 +5,16 @@ export type ShortcutName = 'open' | 'save' | 'saveAs' | 'closeTab' | 'nextTab' |
 export interface ViewState {
   page: number;        // 1-based
   scale: string;       // PDF.js scale value: "auto", "page-width", "page-fit", or "1.25"
-  rotation: number;    // 0, 90, 180, 270
+  /**
+   * 0, 90, 180, 270. Kept so older state files still load. Since spec 22.1 the viewer always
+   * records 0 and never applies a stored value: PDF.js's rotate commands turn the pages
+   * themselves, so a turned view would show a page turned twice.
+   */
+  rotation: number;
 }
+
+/** Spec 22.1. A quarter turn of every page, clockwise (90) or anticlockwise (-90). */
+export type RotateDelta = 90 | -90;
 
 export interface DocInfo { pageCount: number; isXfa: boolean; }
 
@@ -37,6 +45,11 @@ export interface ViewerEvents {
   shortcut: (name: ShortcutName) => void;          // section 11.6
   externallink: (url: string) => void;
   error: (message: string) => void;
+  /**
+   * Spec 22.1. The user chose PDF.js's own Rotate Clockwise or Counterclockwise (the Tools
+   * menu buttons, or R and Shift+R). The view does not turn. The listener turns the pages.
+   */
+  rotaterequest: (delta: RotateDelta) => void;
 }
 
 export interface Viewer {

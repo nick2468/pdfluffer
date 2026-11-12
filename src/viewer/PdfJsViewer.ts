@@ -9,8 +9,11 @@ import {
   type EditorFacts,
   type FieldInfo,
 } from './effectiveChange';
+import { deltaFromTurnedView, ROTATE_BUTTON_SELECTOR, rotateButtonDelta, unturned } from './rotation';
 import { isReloadKey, shortcutFor } from './shortcutFor';
-import type { DocInfo, ExportResult, Matrix, PageImage, Viewer, ViewerEvents, ViewState } from './Viewer';
+import type {
+  DocInfo, ExportResult, Matrix, PageImage, RotateDelta, Viewer, ViewerEvents, ViewState,
+} from './Viewer';
 import injectCss from './viewerInject.css?raw';
 
 // Only the PDF.js members this file uses. Checked against 6.3.289, see BUILD-NOTES.md.
@@ -95,6 +98,8 @@ interface PdfJsApp {
   download(): Promise<void>;
   downloadOrSave(): Promise<void>;
   open(args: { data: Uint8Array; filename: string }): Promise<void>;
+  /** Called by PDF.js's keydown handler for R and Shift+R. Replaced in mount (spec 22.1). */
+  rotatePages(delta: number): void;
   _annotationStorageModified?: boolean;
   _mergedDocumentNeedsSaving?: boolean;
 }
@@ -179,6 +184,8 @@ export class PdfJsViewer implements Viewer {
   private pending: PendingMount | null = null;
   private rejectMount: ((reason: Error) => void) | null = null;
   private destroyed = false;
+  /** True from app.open until the view state is applied. A turned view then is PDF.js's own. */
+  private loading = false;
   private visible = true;
   private dirty = false;
   /** What the loaded file holds for each form widget. Null when unknown or out of date. */
@@ -193,6 +200,7 @@ export class PdfJsViewer implements Viewer {
     shortcut: new Set(),
     externallink: new Set(),
     error: new Set(),
+    rotaterequest: new Set(),
   };
 
   // Spec 9.5: replaces PDF.js's download manager so saved bytes come back to us.
@@ -245,9 +253,10 @@ export class PdfJsViewer implements Viewer {
     app.downloadManager = this.capture;
     this.injectStyle();
     this.forwardEvents(win);
+    this.catchRotateKeys(app);
     this.listenOnBus('pagechanging', () => this.emit('viewchange', this.getViewState()));
     this.listenOnBus('scalechanging', () => this.emit('viewchange', this.getViewState()));
-    this.listenOnBus('rotationchanging', () => this.emit('viewchange', this.getViewState()));
+    this.listenOnBus('rotationchanging', () => this.onRotationChanging());
     this.setVisible(this.visible);
   }
 
@@ -260,6 +269,7 @@ export class PdfJsViewer implements Viewer {
     const pagesInit = new Promise<void>((resolve, reject) => {
       onPagesInit = () => {
         if (view) this.applyView(view);
+        this.loading = false;
         resolve();
       };
       onError = (event) => reject(new Error(event.message || 'The document could not be opened.'));
@@ -268,11 +278,13 @@ export class PdfJsViewer implements Viewer {
     });
 
     this.baseline = null;
+    this.loading = true;
     try {
       const opened = app.open({ data: bytes.slice(), filename });   // .slice() is required (F4)
       // PDF.js dispatches documenterror before open() rejects, so the first rejection wins.
       await Promise.all([opened, pagesInit]);
     } finally {
+      this.loading = false;
       if (onPagesInit) bus.off('pagesinit', onPagesInit);
       if (onError) bus.off('documenterror', onError);
     }
@@ -394,10 +406,11 @@ export class PdfJsViewer implements Viewer {
   getViewState(): ViewState {
     const pdfViewer = this.app?.pdfViewer;
     if (!pdfViewer) return { page: 1, scale: 'auto', rotation: 0 };
+    // Spec 22.1: always 0. A turn is a page change, so the view itself is never kept turned.
     return {
       page: pdfViewer.currentPageNumber,
       scale: String(pdfViewer.currentScaleValue),
-      rotation: pdfViewer.pagesRotation,
+      rotation: 0,
     };
   }
 
@@ -505,7 +518,16 @@ export class PdfJsViewer implements Viewer {
       }
     });
     add('click', (event) => {
-      const target = event.target as { closest?: (selector: string) => { href?: string } | null } | null;
+      const target = event.target as { closest?: (selector: string) => { href?: string; id?: string } | null } | null;
+      // Spec 22.1: the Tools menu's rotate buttons. Stopped before the click reaches the
+      // button, whose handler would dispatch rotatecw or rotateccw and turn the view.
+      const rotate = rotateButtonDelta(target?.closest?.(ROTATE_BUTTON_SELECTOR)?.id);
+      if (rotate !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.requestRotate(rotate);
+        return;
+      }
       const href = target?.closest?.('a[href]')?.href;
       if (typeof href === 'string' && /^(https?|mailto):/i.test(href)) {
         event.preventDefault();
@@ -523,10 +545,52 @@ export class PdfJsViewer implements Viewer {
     add('drop', blockFileDrop);
   }
 
-  // Spec 9.3: rotation, then scale, then page, clamped to the page count.
-  private applyView(view: ViewState): void {
+  /**
+   * Spec 22.1. PDF.js's keydown handler calls `this.rotatePages(90)` for R and
+   * `this.rotatePages(-90)` for Shift+R, looking the method up on the app at the time of the
+   * key (viewer.mjs about lines 21015 and 21048). Replacing the method catches both keys before
+   * the view turns, and leaves PDF.js's own rule in charge of when R is a command: it returns
+   * early while the focus is in a form field, a text box or an editor, so typing an R still
+   * types it. The Tools menu buttons do not come here. Their bus listener was bound to the
+   * original method before mounting finished, so they are caught as clicks (forwardEvents).
+   */
+  private catchRotateKeys(app: PdfJsApp): void {
+    app.rotatePages = (delta: number) => {
+      if (delta === 90 || delta === -90) this.requestRotate(delta);
+    };
+  }
+
+  /** Spec 22.1. Never turns the view. The session manager turns the pages, or does nothing. */
+  private requestRotate(delta: RotateDelta): void {
+    if (!this.app?.pdfDocument || this.loading) return;
+    this.emit('rotaterequest', delta);
+  }
+
+  /**
+   * Spec 22.1, the fallback. Both known rotate paths are caught before the view turns, so a
+   * turned view here came from a path PDFluffer did not catch. Turn it back, then ask for the
+   * same turn as a page change. While a document is loading, a turned view is PDF.js's own
+   * setup, so it is only turned back.
+   */
+  private onRotationChanging(): void {
+    const pdfViewer = this.app?.pdfViewer;
+    if (pdfViewer && pdfViewer.pagesRotation !== 0) {
+      const delta = this.loading ? null : deltaFromTurnedView(pdfViewer.pagesRotation);
+      console.warn(`PDF.js turned the view to ${pdfViewer.pagesRotation}. PDFluffer turned it back.`);
+      // Re-dispatches rotationchanging at 0, which emits viewchange through the line below.
+      pdfViewer.pagesRotation = 0;
+      if (delta !== null) this.emit('rotaterequest', delta);
+      return;
+    }
+    this.emit('viewchange', this.getViewState());
+  }
+
+  // Spec 9.3: rotation, then scale, then page, clamped to the page count. Spec 22.1: the
+  // rotation is always 0, whatever the stored view says.
+  private applyView(stored: ViewState): void {
     const app = this.requireApp();
     const pdfViewer = app.pdfViewer;
+    const view = unturned(stored);
     pdfViewer.pagesRotation = view.rotation;
     pdfViewer.currentScaleValue = view.scale;
     pdfViewer.currentPageNumber = Math.min(Math.max(1, Math.round(view.page)), Math.max(1, app.pagesCount));

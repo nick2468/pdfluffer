@@ -46,13 +46,15 @@ class FakeDialogs implements Dialogs {
 }
 
 /**
- * The tools only ever call three methods on the manager. Spec 13.2 types the context's
+ * The tools only ever call four methods on the manager. Spec 13.2 types the context's
  * `session` as the whole `SessionManager`, so this stands in for it through one cast,
  * here. The manager's own behaviour has its own tests.
  */
 function fakeSession() {
   const api = {
     ops: [] as EngineOp[],
+    /** Each rotateAll call's degrees. The manager's own tests cover what it then does. */
+    rotations: [] as number[],
     result: true,
     page: 1 as number | null,
     structural: false,
@@ -61,6 +63,10 @@ function fakeSession() {
     },
     runOp(_tabId: string, op: EngineOp): Promise<boolean> {
       api.ops.push(op);
+      return Promise.resolve(api.result);
+    },
+    rotateAll(_tabId: string, degrees: number): Promise<boolean> {
+      api.rotations.push(degrees);
       return Promise.resolve(api.result);
     },
     currentPage(): number | null {
@@ -160,14 +166,20 @@ describe("Insert PDF at end", () => {
 });
 
 describe("the rotate tools", () => {
-  it("turn every page right or left", async () => {
+  it("turn every page right or left through the manager's rotateAll (spec 22.1)", async () => {
     const { session, ctx } = setup();
     await rotateAllRight.run(ctx);
     await rotateAllLeft.run(ctx);
-    expect(session.ops).toEqual([
-      { kind: 'pages.rotate', pages: 'all', degrees: 90 },
-      { kind: 'pages.rotate', pages: 'all', degrees: -90 },
-    ]);
+    expect(session.rotations).toEqual([90, -90]);
+    expect(session.ops).toEqual([]);
+  });
+
+  it("leave the Save-first guard to rotateAll, so it is asked once", async () => {
+    const { session, dialogs, ctx } = setup();
+    session.structural = true;
+    await rotateAllRight.run(ctx);
+    expect(dialogs.asked).toEqual([]);
+    expect(session.rotations).toEqual([90]);
   });
 
   it("turn the page the viewer is showing", async () => {
@@ -214,7 +226,9 @@ describe("the Save first guard (spec 20.5a)", () => {
     expect(SAVE_FIRST_DIALOG.body).toBe("You have moved or deleted pages. Save the file, then run this again.");
   });
 
-  for (const tool of documentTools) {
+  // Rotate all pages right and left run SessionManager.rotateAll, which holds the guard and
+  // has its own tests (spec 22.1).
+  for (const tool of documentTools.filter((t) => t !== rotateAllRight && t !== rotateAllLeft)) {
     it(`stops ${tool.label} before any other dialog while page edits are unsaved`, async () => {
       const { files, session, dialogs, ctx } = setup();
       files.queuePickFiles([A]);
@@ -232,7 +246,7 @@ describe("the Save first guard (spec 20.5a)", () => {
 
   it("lets a tool run as usual once there are no unsaved page edits", async () => {
     const { session, dialogs, ctx } = setup();
-    await rotateAllRight.run(ctx);
+    await rotatePageRight.run(ctx);
     expect(dialogs.asked).toEqual([]);
     expect(session.ops).toHaveLength(1);
   });

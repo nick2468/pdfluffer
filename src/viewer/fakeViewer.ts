@@ -35,7 +35,7 @@ export class FakeViewer implements Viewer {
   private dirty = false;
   private listeners: Listeners = {
     viewchange: new Set(), dirtychange: new Set(), shortcut: new Set(),
-    externallink: new Set(), error: new Set(),
+    externallink: new Set(), error: new Set(), rotaterequest: new Set(),
   };
 
   /** Stores the flag, makes hasChanges() return it, and emits dirtychange. */

@@ -54,13 +54,15 @@ export const insertPdf: Tool = {
   },
 };
 
+// Spec 22.1: PDF.js's own rotate commands must do exactly what these do, so the steps,
+// the Save-first guard included, live in one place, SessionManager.rotateAll.
+
 export const rotateAllRight: Tool = {
   id: "rotateAllRight",
   label: "Rotate all pages right",
   needs: ROTATE,
   async run(ctx: ToolContext): Promise<void> {
-    if (await unsavedPageEdits(ctx)) return;
-    await ctx.session.runOp(ctx.tabId, { kind: 'pages.rotate', pages: 'all', degrees: 90 });
+    await ctx.session.rotateAll(ctx.tabId, 90);
   },
 };
 
@@ -69,8 +71,7 @@ export const rotateAllLeft: Tool = {
   label: "Rotate all pages left",
   needs: ROTATE,
   async run(ctx: ToolContext): Promise<void> {
-    if (await unsavedPageEdits(ctx)) return;
-    await ctx.session.runOp(ctx.tabId, { kind: 'pages.rotate', pages: 'all', degrees: -90 });
+    await ctx.session.rotateAll(ctx.tabId, -90);
   },
 };
 
