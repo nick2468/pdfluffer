@@ -1441,3 +1441,83 @@ tab's bytes after the opening export.
    Accepted 2026-11-05 (chip 14 question 1). The E3 revision makes it rarer. Subsetting would
    need a library section 5 does not allow, which is the user's call.
 7. The page is shown whole, fitted to the dialog. There is no zoom in the editor.
+
+## 22. Fixes before 0.2.0 ships (phase 7, added 2026-11-13)
+
+The user asked for two fixes after chip 15, and ruled that the licence notices found at its
+review ship in the same release. 0.2.0 is not released yet, so the version stays 0.2.0.
+
+### 22.1 Rotating pages is saved
+
+**The fault.** PDF.js's own Rotate Clockwise and Rotate Counterclockwise (its Tools menu,
+buttons `#pageRotateCw` and `#pageRotateCcw`, and the keys R and Shift+R) turn the VIEW only.
+PDFluffer remembers that view per file (D11, `ViewState.rotation`) but never writes it into the
+PDF, so a save keeps the old orientation. A user who turns a scanned page upright expects the
+file to stay upright.
+
+**Ruling.** PDF.js's rotate commands become real page changes. Each one does exactly what the
+Document tool **Rotate all pages right** (or left) does: `pages.rotate` on `all`, 90 or -90,
+through the same path as that tool, with the same guards (Save first, the signature guard,
+`runOp`). The tab becomes unsaved, Save writes the new orientation, and Revert to saved undoes
+it. The view rotation stays 0, so a page is never turned twice.
+
+- **Catch it before PDF.js turns the view** where that can be done from outside PDF.js (spec 9):
+  the buttons dispatch `rotatecw` and `rotateccw` on PDF.js's event bus, and the keys call
+  `PDFViewerApplication.rotatePages` directly (`viewer.mjs` about line 21015). If one path
+  cannot be caught before the view turns, let it turn, then set `pagesRotation` back to 0 and
+  run the operation. Record which paths needed that.
+- **A saved view rotation is no longer restored.** `ViewState.rotation` stays in the state
+  schema so older state files still load, but `PdfJsViewer` always applies 0 and always records
+  0. Otherwise a file opened with a turned view would look rotated with nothing to save.
+- If the tab is busy, or a guard stops the operation, the view stays as it was (rotation 0)
+  and nothing changes.
+- PDF.js 6.3.289's page manager (the sidebar) has no per-page rotate; checked 2026-11-13. If
+  the builder finds one, it gets the same treatment on that page, or is recorded.
+
+### 22.2 Tabs reorder by dragging
+
+**Ruling.** The user drags a tab left or right along the tab bar with the mouse. The other
+tabs move aside while it moves, and the tab lands where it is dropped.
+
+- **Pointer events, not HTML5 drag and drop.** `dragDropEnabled` is true in `tauri.conf.json`
+  so files can be dropped in from Explorer, and with it WebView2 hands HTML5 drag events to
+  Tauri instead of the page. Use `pointerdown`, `pointermove`, `pointerup` and
+  `setPointerCapture`.
+- A drag starts only after the pointer moves 5 CSS pixels with the button held, so a click
+  still just activates the tab. The tab's close button never starts a drag. Escape during a
+  drag puts the tab back. The `+` button stays at the end.
+- The new order is the order `SessionManager` keeps, so it is saved in the session state and
+  comes back at the next start. Reordering marks nothing unsaved and loads no viewer.
+- The drop position is a pure function in `src/util`, with tests. `SessionManager.moveTab`
+  (tab id, new index) has tests.
+
+### 22.3 Licence notices in the app
+
+**The fault.** The installed app holds code under licences that require their notice to go
+with every copy: React, pdf-lib, PDFium (through `@embedpdf/pdfium`), the other npm packages
+in the bundle, and the Rust crates compiled into `pdfluffer.exe`. Only PDF.js's `LICENSE`
+ships today (`public/pdfjs/LICENSE`).
+
+**Ruling.**
+
+- `scripts/make-notices.mjs`, with no new dependency, writes `public/licences.txt`, which is
+  committed. It holds PDFluffer's own MIT licence first, then one section per third-party
+  package: name, version, licence name, and the full text of its licence and notice files.
+  - npm: the production dependencies in `package.json` and everything they pull in, from
+    `package-lock.json` (entries not marked `dev`), each read from its `node_modules` folder.
+    PDF.js is included from `public/pdfjs/LICENSE`. PDFium's own licence is
+    `node_modules/@embedpdf/pdfium/LICENSE.pdfium`.
+  - Rust: `cargo metadata --format-version 1 --filter-platform x86_64-pc-windows-msvc`,
+    following only normal dependencies (not build or dev) from `pdfluffer`, each read from its
+    manifest folder in the Cargo registry. No network: `--offline`.
+  - Packages with the same licence text share it: the text appears once, with every package
+    it covers listed above it.
+  - A package with no licence file gets its licence name and repository address, and is
+    listed in BUILD-NOTES.
+- `npm run notices` regenerates the file. `npm run notices -- --check` fails when the
+  committed file is out of date, and `build:signed`'s preflight runs that check, so a release
+  cannot ship stale notices.
+- The About dialog gets a **Licences** button. It opens a dialog showing `licences.txt`,
+  fetched from the app's own origin (CSP `connect-src 'self'` allows it), in a scrolling
+  monospace box with a Close button.
+- README's Licence section says where the notices are.
