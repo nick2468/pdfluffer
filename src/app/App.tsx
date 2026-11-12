@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { TabSnapshot } from "../session/DocumentSession";
 import { isReloadKey, shortcutFor } from "../viewer/shortcutFor";
 import ChoiceDialog from "./ChoiceDialog";
+import LicencesDialog from "./LicencesDialog";
 import ProgressDialog from "./ProgressDialog";
 import SavedSignaturesDialog from "./SavedSignaturesDialog";
 import SettingsDialog from "./SettingsDialog";
@@ -17,6 +18,7 @@ export default function App() {
   const { tabs, activeTabId } = useSession(manager);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [signaturesOpen, setSignaturesOpen] = useState(false);
+  const [licencesOpen, setLicencesOpen] = useState(false);
   // Spec 21.5. A fresh dialog for every opening, so no state carries over between them.
   const [editor, setEditor] = useState<{ tabId: string; n: number } | null>(null);
   const closeEditor = useCallback(() => setEditor(null), []);
@@ -51,6 +53,7 @@ export default function App() {
         onSettings={() => setSettingsOpen(true)}
         onSavedSignatures={() => setSignaturesOpen(true)}
         onEditText={(tabId) => setEditor((old) => old ?? { tabId, n: Date.now() })}
+        onLicences={() => setLicencesOpen(true)}
       />
       {showBanner && (
         <div className="banner" role="status">
@@ -69,6 +72,7 @@ export default function App() {
       <ProgressDialog />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <SavedSignaturesDialog open={signaturesOpen} onClose={() => setSignaturesOpen(false)} />
+      <LicencesDialog open={licencesOpen} onClose={() => setLicencesOpen(false)} />
       {editor && <TextEditorDialog key={editor.n} tabId={editor.tabId} onClose={closeEditor} />}
     </div>
   );

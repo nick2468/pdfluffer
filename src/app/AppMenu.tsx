@@ -11,10 +11,10 @@ import { useServices, useSession } from "./services";
 const PDFJS_VERSION = "6.3.289";
 
 export default function AppMenu(
-  { active, onSettings, onSavedSignatures, onEditText }:
+  { active, onSettings, onSavedSignatures, onEditText, onLicences }:
   {
     active: TabSnapshot | undefined; onSettings: () => void; onSavedSignatures: () => void;
-    onEditText: (tabId: string) => void;
+    onEditText: (tabId: string) => void; onLicences: () => void;
   },
 ) {
   const { manager, dialogs, files, engines, tools, ocr } = useServices();
@@ -57,6 +57,10 @@ export default function AppMenu(
 
   const clearHistory = async () => {
     if (await ask(CLEAR_HISTORY_DIALOG) === BUTTON.ok.id) manager.clearHistory();
+  };
+
+  const about = async () => {
+    if (await ask(aboutDialog(appVersion, PDFJS_VERSION)) === BUTTON.licences.id) onLicences();
   };
 
   return (
@@ -129,7 +133,7 @@ export default function AppMenu(
           <Item label="Saved signatures..." onClick={run(onSavedSignatures)} />
           <Item label="Settings..." onClick={run(onSettings)} />
           <Item label="Clear history..." onClick={run(clearHistory)} />
-          <Item label="About PDFluffer" onClick={run(() => ask(aboutDialog(appVersion, PDFJS_VERSION)))} />
+          <Item label="About PDFluffer" onClick={run(about)} />
         </div>
       )}
     </div>

@@ -102,3 +102,6 @@ self-contained task given to an AI model, with every change reviewed against the
 MIT. See `LICENSE`. PDF.js is Apache 2.0, pdf-lib is MIT, and `@embedpdf/pdfium` is MIT
 over PDFium's BSD-style licence; their notices are in their own folders under
 `public/pdfjs/` and `node_modules/`.
+
+The notices for every bundled component, JavaScript packages and Rust crates alike, are in
+the app under About, Licences, and in `public/licences.txt` (`npm run notices` writes it).

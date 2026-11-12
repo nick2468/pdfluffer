@@ -29,6 +29,7 @@ export const BUTTON = {
   saveCopy: { id: "saveCopy", label: "Save As a copy..." },
   open: { id: "open", label: "Open", kind: "primary" },
   ok: { id: "ok", label: "OK", kind: "primary" },
+  licences: { id: "licences", label: "Licences" },
 } as const satisfies Record<string, DialogButton>;
 
 /** Spec 12.3, the first save of a tab. */
@@ -251,11 +252,23 @@ export const CLEAR_HISTORY_DIALOG: DialogText = {
   buttons: [{ id: BUTTON.ok.id, label: "Clear history", kind: "danger" }, BUTTON.cancel],
 };
 
-/** Spec 11.5, About PDFluffer. The body keeps its line breaks. */
+/**
+ * Spec 11.5, About PDFluffer. The body keeps its line breaks. Spec 22.3: Licences, beside OK,
+ * opens the Licences dialog.
+ */
 export function aboutDialog(appVersion: string, pdfJsVersion: string): DialogText {
   return {
     title: "About PDFluffer",
     body: `Version ${appVersion}\nPDF.js ${pdfJsVersion}\nNo ads. No account. No network.`,
-    buttons: [BUTTON.ok],
+    buttons: [BUTTON.licences, BUTTON.ok],
   };
 }
+
+/** Spec 22.3, the Licences dialog. It fetches the notices from the app's own origin. */
+export const LICENCES = {
+  title: "Licences",
+  url: "./licences.txt",
+  loading: "Loading the licences...",
+  failed: "PDFluffer could not load its licence notices.",
+  close: "Close",
+} as const;
