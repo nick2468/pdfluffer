@@ -13,6 +13,7 @@
     "smoke:prod": "node scripts/prod-smoke/run.mjs",
     "smoke:ocr": "node scripts/prod-smoke/ocr.mjs",
     "smoke:edit": "node scripts/prod-smoke/edit.mjs",
+    "smoke:fixes": "node scripts/prod-smoke/fixes.mjs",
     "build:signed": "node scripts/build-signed.mjs",
     "notices": "node scripts/make-notices.mjs"
   },
