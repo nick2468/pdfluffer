@@ -20,7 +20,8 @@
 // the thumbprint in the config together; the preflight refuses if they disagree.
 //
 // Three steps, and a failure at any one stops the rest:
-//   1. preflight: the certificate is current and Windows can sign with it now;
+//   1. preflight: public/licences.txt matches the installed packages (spec 22.3), and the
+//      certificate is current and Windows can sign with it now;
 //   2. the build, with the signing config merged;
 //   3. verify: the installer carries this certificate, a sha256 digest and an
 //      RFC 3161 timestamp. The program and uninstaller inside it are checked the
@@ -74,7 +75,18 @@ function signtool() {
   fail("signtool.exe was not found. Install the Windows SDK signing tools.");
 }
 
+/** Spec 22.3: a release never ships licence notices that are out of date. */
+function noticesCurrent() {
+  const result = spawnSync(process.execPath, [join(repo, "scripts", "make-notices.mjs"), "--check"], {
+    cwd: repo, stdio: "inherit",
+  });
+  if (result.status !== 0) {
+    fail("The licence notices are out of date. Run `npm run notices`, commit public/licences.txt, then build again.");
+  }
+}
+
 function preflight() {
+  noticesCurrent();
   const expected = expectedCertificate();
   if (configuredThumbprint() !== expected.thumbprint) {
     fail(

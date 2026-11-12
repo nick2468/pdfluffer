@@ -13,7 +13,8 @@
     "smoke:prod": "node scripts/prod-smoke/run.mjs",
     "smoke:ocr": "node scripts/prod-smoke/ocr.mjs",
     "smoke:edit": "node scripts/prod-smoke/edit.mjs",
-    "build:signed": "node scripts/build-signed.mjs"
+    "build:signed": "node scripts/build-signed.mjs",
+    "notices": "node scripts/make-notices.mjs"
   },
   "dependencies": {
     "@cantoo/pdf-lib": "2.11.1",

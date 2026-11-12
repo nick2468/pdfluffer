@@ -1,3 +1,5 @@
 # Vendored PDF.js: store every byte exactly as unpacked (spec D6).
 public/pdfjs/** -text
 *.pdf binary
+# Licence notices: written with LF endings by scripts/make-notices.mjs, compared byte for byte.
+public/licences.txt text eol=lf
