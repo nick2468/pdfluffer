@@ -716,6 +716,21 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Spec 22.2. Moves a tab to a new place in the tab order, the order the session state
+   * keeps. The index is clamped to the tab list. It changes nothing else: no tab becomes
+   * unsaved, no viewer loads, and the active tab stays the active tab.
+   */
+  moveTab(tabId: string, toIndex: number): void {
+    const from = this.tabs.findIndex((t) => t.id === tabId);
+    if (from < 0 || !Number.isFinite(toIndex)) return;
+    const to = Math.min(Math.max(0, Math.round(toIndex)), this.tabs.length - 1);
+    if (to === from) return;
+    const [tab] = this.tabs.splice(from, 1);
+    this.tabs.splice(to, 0, tab);
+    this.publish();
+  }
+
   private async step(activeId: string, by: 1 | -1): Promise<void> {
     const n = this.tabs.length;
     const index = this.tabs.findIndex((t) => t.id === activeId);

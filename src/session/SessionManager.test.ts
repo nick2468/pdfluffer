@@ -1561,6 +1561,81 @@ describe("SessionManager revert (spec 13.6)", () => {
   });
 });
 
+// Spec 22.2: dragging a tab reorders the tabs
+
+describe("SessionManager moveTab (spec 22.2)", () => {
+  async function threeTabs() {
+    const env = setup();
+    await env.manager.start();
+    await env.manager.openRefs([A, B, C]);
+    return env;
+  }
+  const names = (s: { tabs: { name: string }[] }) => s.tabs.map((t) => t.name);
+
+  it("moves the tab and keeps every other tab in order", async () => {
+    const { manager, snap, tab } = await threeTabs();
+    manager.moveTab(tab(0).id, 2);
+    expect(names(snap())).toEqual(["b.pdf", "c.pdf", "a.pdf"]);
+    manager.moveTab(tab(2).id, 0);
+    expect(names(snap())).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    manager.moveTab(tab(1).id, 2);
+    expect(names(snap())).toEqual(["a.pdf", "c.pdf", "b.pdf"]);
+  });
+
+  it("marks nothing unsaved, loads no viewer and keeps the active tab", async () => {
+    const { manager, snap, tab, viewers, active } = await threeTabs();
+    expect(active()?.name).toBe("c.pdf");
+    expect(viewers).toHaveLength(1);
+    manager.moveTab(tab(2).id, 0);
+    manager.moveTab(tab(1).id, 2);
+    expect(active()?.name).toBe("c.pdf");
+    expect(snap().tabs.map((t) => [t.status, t.dirty])).toEqual([
+      ["ready", false], ["unloaded", false], ["unloaded", false],
+    ]);
+    expect(viewers).toHaveLength(1);
+    expect(viewers[0].loads).toHaveLength(1);
+  });
+
+  it("saves the session state in the new order", async () => {
+    vi.useFakeTimers();
+    const { manager, files, tab } = await threeTabs();
+    manager.moveTab(tab(0).id, 2);
+    await vi.advanceTimersByTimeAsync(500);
+    const saved = await files.loadState<SessionStateV1>("session");
+    expect(saved?.tabs.map((t) => t.ref)).toEqual([B, C, A]);
+    expect(saved?.activeTabId).toBe(tab(1).id);
+  });
+
+  it("comes back in the new order at the next start", async () => {
+    const { manager, files, tab } = await threeTabs();
+    manager.moveTab(tab(2).id, 0);
+    expect(await manager.confirmCloseAll()).toBe(true);
+    const next = new SessionManager(files, () => new FakeViewer(), new FakeDialogs(), {});
+    next.setViewerHost(HOST);
+    await next.start();
+    expect(names(next.getSnapshot())).toEqual(["c.pdf", "a.pdf", "b.pdf"]);
+  });
+
+  it("clamps the index to the tab list", async () => {
+    const { manager, snap, tab } = await threeTabs();
+    manager.moveTab(tab(0).id, 99);
+    expect(names(snap())).toEqual(["b.pdf", "c.pdf", "a.pdf"]);
+    manager.moveTab(tab(2).id, -5);
+    expect(names(snap())).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    manager.moveTab(tab(0).id, 1.4);
+    expect(names(snap())).toEqual(["b.pdf", "a.pdf", "c.pdf"]);
+  });
+
+  it("does nothing for an unknown id, the same place or a bad index", async () => {
+    const { manager, snap, tab } = await threeTabs();
+    const before = snap();
+    manager.moveTab("no-such-tab", 0);
+    manager.moveTab(tab(1).id, 1);
+    manager.moveTab(tab(1).id, Number.NaN);
+    expect(snap()).toBe(before);
+  });
+});
+
 describe("SessionManager shortcuts (spec 11.6)", () => {
   it("nextTab and prevTab wrap around", async () => {
     const { manager, active } = setup();
