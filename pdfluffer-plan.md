@@ -117,8 +117,8 @@ Built after chip 13. Released as 0.2.0 when complete.
 The user asked for two fixes, and ruled that the licence notices go in the same release.
 P6.10 (the signed 0.2.0 release) waits for this phase.
 
-- [ ] P7.1 PDF.js's rotate buttons and keys run `pages.rotate` on all pages; the view rotation is no longer restored (spec 22.1, chip 16)
-- [ ] P7.2 Drag a tab to reorder the tabs, saved in the session state (spec 22.2)
-- [ ] P7.3 `scripts/make-notices.mjs`, `public/licences.txt`, the `--check` in `build:signed` (spec 22.3)
-- [ ] P7.4 The Licences button and dialog in About (spec 22.3)
-- [ ] P7.5 `smoke:fixes` in the release build; a fresh unsigned installer; every smoke test green
+- [x] P7.1 PDF.js's rotate buttons and keys run `pages.rotate` on all pages; the view rotation is no longer restored (spec 22.1, chip 16)
+- [x] P7.2 Drag a tab to reorder the tabs, saved in the session state (spec 22.2)
+- [x] P7.3 `scripts/make-notices.mjs`, `public/licences.txt`, the `--check` in `build:signed` (spec 22.3)
+- [x] P7.4 The Licences button and dialog in About (spec 22.3)
+- [x] P7.5 `smoke:fixes` in the release build; a fresh unsigned installer; every smoke test green

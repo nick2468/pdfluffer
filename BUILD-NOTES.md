@@ -1416,6 +1416,74 @@ It is not counted as an app fault. If it recurs while nobody is typing, look aga
     - The Write and Edit tools of this session refused paths in the main checkout (it had been
       opened in a worktree), as for chip 14, so files were written through the shell. No
       worktree was used for any build, test or commit.
+33. **Save rotation, drag tabs, licence notices** (chip 16, plan P7.1 to P7.5, spec 22).
+    - **Both rotate paths are caught before the view turns; the fallback never had to act.**
+      The keys R and Shift+R: PDF.js's keydown handler calls `this.rotatePages(delta)` on the
+      app at the time of the key, so `PdfJsViewer` replaces `app.rotatePages` once mounted.
+      That keeps PDF.js's own rule for when R is a command: it returns early while the focus
+      is in an input, a text area, a select or anything content-editable, so an R typed into a
+      form field or a PDF.js text box stays text (checked in the harness: "Rr" typed into
+      form-basic's Full name field, no turn). The Tools menu buttons: their bus listeners
+      were bound to the original method in `bindEvents`, which runs before
+      `initializedPromise` resolves, so replacing the method does not reach them. A
+      capture-phase click listener on the iframe window, already there for external links,
+      stops a click on `#pageRotateCw` or `#pageRotateCcw` before it reaches the button. The
+      spec 22.1 fallback is built anyway, in `rotationchanging`: a turned view outside a load
+      is turned back to 0 and a 90 or 270 becomes the page change, with a console warning so a
+      smoke test would see it. `smoke:fixes` watches PDF.js's bus and proves no view turn
+      happened on either path.
+    - **One rotate path.** `SessionManager.rotateAll(tabId, 90 | -90)` holds the busy check,
+      the Save-first guard and `runOp` (with the signature guard). The two Rotate all tools
+      and the viewer's new `rotaterequest` event both call it, so the tools' Save-first test
+      moved to the manager. A busy tab ignores a request without a dialog, so a held R key
+      cannot queue turns.
+    - **The view rotation.** `getViewState` always records 0, and `applyView` applies 0 through
+      `unturned()` in `src/viewer/rotation.ts`, whatever the stored view says. The schema still
+      has `rotation`, so old state files load.
+    - **Drag design: the active tab never changes on a drag.** A drag only moves the tab, so no
+      viewer loads; a click with no movement activates as before. The drop point is the dragged
+      tab's centre (`dropIndex` in `src/util/tabDrop.ts`): a tab goes after every other tab
+      whose centre it has passed. Pointer capture starts at pointerdown; the drag itself starts
+      at 5 CSS pixels (`isDrag`). The click that ends a drag, or a drag put back with Escape, is
+      swallowed so it does not activate. A change to the tab list during a press cancels it.
+      Edge scrolling is built, simply: each pointer move within 24 pixels of either end of a
+      strip that scrolls moves it 12 pixels. It moves only while the pointer moves.
+    - **Licence notices.** `public/licences.txt`: 520,361 bytes (well under the 3 MB line), 18 JavaScript components (16 npm
+      packages from the lockfile, plus PDF.js and PDFium listed on their own) and 253 Rust
+      crates, 148 distinct texts. Rust follows normal dependencies only, so proc-macro crates
+      (compiled, not shipped) are in and build scripts' dependencies are out: listing too much
+      is the safe side. PDFium's `LICENSE.pdfium` is listed under "PDFium", not under
+      `@embedpdf/pdfium`, which keeps its own MIT `LICENSE`. The text is normalised (LF, no
+      trailing spaces), and `.gitattributes` pins the file to LF so `--check` compares bytes.
+      No path from this machine is written, only file names.
+    - **Packages with no licence file** (spec 22.3 rule: licence name and repository, listed in
+      the file's last section): Rust `alloc-stdlib` 0.2.4 (BSD-3-Clause), `defmt-parser` 1.0.0,
+      `selectors` 0.36.1 (MPL-2.0), `unic-char-property`, `unic-char-range`, `unic-common`,
+      `unic-ucd-ident`, `unic-ucd-version` (all 0.9.0, MIT/Apache-2.0), `webview2-com` 0.38.2,
+      `webview2-com-macros` 0.8.1, `webview2-com-sys` 0.38.2 (MIT). The four npm
+      `@tauri-apps/plugin-*` packages ship only `LICENSE.spdx`, a declaration of MIT and
+      Apache-2.0 without the texts. That file is included as their licence file; the full MIT
+      and Apache texts of the Tauri project appear under the Rust crates of the same plugins.
+    - **"React" in the smoke test.** No licence text contains the word "React" (React's own
+      `LICENSE` names only Meta), and the notices list it by its package name, `react`. So
+      `smoke:fixes` matches package names without case. "MIT License", "PDFium" and "pdf-lib"
+      are matched exactly.
+    - **About, Licences** is a second button in the About choice dialog. When it is chosen, the
+      menu opens `LicencesDialog`, which fetches `./licences.txt` on every opening.
+    - **Seen in the harness, not caused here:** PDF.js logs `#setScale: "null" is an unknown
+      zoom value.` after a reload of the harness with form-basic.pdf among the restored tabs.
+      It comes from PDF.js's own scale setters (likely its scripting `zoom` event); this chip
+      changed no scale code.
+    - **The harness ran on port 1420** from the main checkout. The Write and Edit tools refused
+      main-checkout paths again (the session opened in a worktree), so files were written
+      through the shell. No worktree was used for any build, test or commit.
+    - **The release build, 2026-11-13** (unsigned, `npm run tauri build` of `0c2aa0f`, the last
+      code commit): `src-tauri/target/release/bundle/nsis/PDFluffer_0.2.0_x64-setup.exe`,
+      9,608,753 bytes, SHA-256
+      `409cf047d2c7935579aa8e72947a9ccd53b482d2e5ba743b2dd09e37fb60e159`. Against it, each on the
+      first run: `smoke:fixes` 29 of 29, `smoke:prod` 24 of 24, `smoke:ocr` 33 of 33,
+      `smoke:edit` 34 of 34, `backup.mjs` 14 of 14, `edit-probe.mjs` 16 of 16. `npm run check`
+      622 tests, `cargo test` 28.
 
 ## Questions for the user
 
