@@ -993,6 +993,20 @@ test sets that value in code, so a stray "i" can only be a real keystroke from t
 keyboard reaching the field the test had focused, since the test runs on the real desktop.
 It is not counted as an app fault. If it recurs while nobody is typing, look again.
 
+**Review of chip 16, 2026-11-14: passed.** The orchestrator read the rotate catch in
+`PdfJsViewer.ts` and `rotation.ts`, `SessionManager.rotateAll` and `moveTab`, the tab drag in
+`TabBar.tsx`, `make-notices.mjs`, the preflight change and `LicencesDialog` at source, and
+reran everything in the main checkout: `npm run check` 622 tests, `cargo test` 28,
+`npm run notices -- --check` (520,361 bytes, 18 JavaScript components, 253 Rust crates),
+`npm run build`, the boundary greps, `public/pdfjs` untouched, no em dash, and only
+`PdfJsViewer.ts` reaches inside the iframe. `public/licences.txt` names no local path.
+Stopping the rotate buttons' click changes nothing else: PDF.js marks both `close: false`, so
+its Tools menu stays open as before. Against a fresh unsigned `npm run tauri build` of
+`e3348b3` (`PDFluffer_0.2.0_x64-setup.exe`, 9,608,774 bytes, SHA-256 `b7a81825...efa0a78`),
+each on the first run: `smoke:fixes` 29 of 29, `smoke:prod` 24, `smoke:edit` 34,
+`smoke:ocr` 33, `backup.mjs` 14, `edit-probe.mjs` 16. Every choice in decision 33 is
+ratified, including the active tab staying put on a drag.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
