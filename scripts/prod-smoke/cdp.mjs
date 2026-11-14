@@ -24,10 +24,18 @@ export async function connect(port = PORT) {
 }
 export const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 export async function until(fn, ms = 30000, step = 300) { const t0 = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await sleep(step); } }
+/**
+ * Known issue 1 in BUILD-NOTES: Chromium logs this warning when PDF.js probes for WebGPU on a
+ * machine with no GPU adapter at that moment (seen 2026-11-14 during a remote session). It is
+ * a warning only, PDF.js carries on without WebGPU, and the app cannot prevent it. Only this
+ * exact rendering warning is ignored; every other warning still counts.
+ */
+const knownHarmless = (x) => x.source === 'rendering' && x.level === 'warning' && x.text === 'No available adapters.';
+
 export function problems(events) {
   const out = [];
   for (const e of events) {
-    if (e.method === 'Log.entryAdded') { const x = e.params.entry; if (x.level === 'error' || x.level === 'warning' || x.source === 'security' || x.source === 'violation') out.push(`[log ${x.source}/${x.level}] ${x.text} ${x.url || ''}`); }
+    if (e.method === 'Log.entryAdded') { const x = e.params.entry; if (knownHarmless(x)) continue; if (x.level === 'error' || x.level === 'warning' || x.source === 'security' || x.source === 'violation') out.push(`[log ${x.source}/${x.level}] ${x.text} ${x.url || ''}`); }
     if (e.method === 'Runtime.consoleAPICalled' && (e.params.type === 'error' || e.params.type === 'warning')) out.push(`[console.${e.params.type}] ` + e.params.args.map(a => a.value ?? a.description ?? '').join(' ').slice(0, 300));
     if (e.method === 'Runtime.exceptionThrown') out.push('[exception] ' + (e.params.exceptionDetails.exception?.description || e.params.exceptionDetails.text).slice(0, 300));
     if (e.method === 'Page.javascriptDialogOpening') out.push(`[NATIVE DIALOG ${e.params.type}] ${e.params.message}`);

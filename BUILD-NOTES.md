@@ -1007,6 +1007,18 @@ each on the first run: `smoke:fixes` 29 of 29, `smoke:prod` 24, `smoke:edit` 34,
 `smoke:ocr` 33, `backup.mjs` 14, `edit-probe.mjs` 16. Every choice in decision 33 is
 ratified, including the active tab staying put on a drag.
 
+**The signed 0.2.0 build, 2026-11-14.** `npm run build:signed` of `a4e0383`, with the user
+connected to SimplySign: the preflight's notices check passed, every file signed, and the
+check reported the installer "signed by ... CN=Open Source Developer Nicholas Walker, sha256,
+timestamped". `PDFluffer_0.2.0_x64-setup.exe`, 9,668,120 bytes, SHA-256
+`7cc2b065a21361009ef69591191a2697f51d63413e1b3ede304c2f498b34dd8c`. Against it:
+`smoke:edit` 34, `smoke:ocr` 33, `backup.mjs` 14. `smoke:fixes`, `smoke:prod` and
+`edit-probe.mjs` each failed only their console check, on Chromium's `No available adapters.`
+(known issue 1): the machine had no GPU adapter during the user's remote session. `cdp.mjs`'s
+`problems()` now skips exactly that rendering warning, and then they passed 29, 24 and 16.
+The first `smoke:prod` run also read `about:blank` as the start page once; two reruns read
+`http://tauri.localhost/`, so that was the debugging port connecting before the page loaded.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and
