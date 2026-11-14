@@ -1019,6 +1019,19 @@ timestamped". `PDFluffer_0.2.0_x64-setup.exe`, 9,668,120 bytes, SHA-256
 The first `smoke:prod` run also read `about:blank` as the start page once; two reruns read
 `http://tauri.localhost/`, so that was the debugging port connecting before the page loaded.
 
+**Release 0.2.0, 2026-11-14.** The upgrade walk ran from Explorer (the permission layer allowed
+`Start-Process explorer.exe` this time). Its first run went over an unsigned 0.2.0 already on
+the machine, so by the user's choice 0.1.2 was put back first: the released asset was
+downloaded and matched `6d34b01b...5391f1`, and the walk script installed it through its
+windows (`-SetupPath`, "Uninstall before installing", app data kept). Then the signed 0.2.0
+walked over 0.1.2: the old uninstaller got `_?=C:\Users\nick2\AppData\Local\PDFluffer`,
+"Delete the application data" stayed unticked, the uninstall entry and install-folder key
+read 0.2.0 under "Nicholas Walker", both programs' signatures are Valid, and `state.json`
+was untouched. Tagged `v0.2.0` at `b41a94b` (the code is `a4e0383`'s; the later commit
+changed only the smoke filter and these notes) and published with `SHA256SUMS-0.2.0.txt`.
+The downloaded asset's hash matches the walked file, `7cc2b065...dd8c`, and
+`releases/latest` answers v0.2.0. The showcase links to `releases/latest`.
+
 ## Deviations
 
 1. **`.gitattributes` added** (not in spec 6.1). It marks `public/pdfjs/**` as `-text` and

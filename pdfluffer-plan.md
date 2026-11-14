@@ -109,7 +109,7 @@ Built after chip 13. Released as 0.2.0 when complete.
 - [x] P6.7 Undo and redo, and the history rule (spec 21.1 E5, 21.5)
 - [x] P6.8 `scripts/prod-smoke/edit.mjs`: replace, insert, delete, undo, save, reopen, in the release build
 - [x] P6.9 Version 0.2.0, an unsigned installer, all smoke tests green
-- [ ] P6.10 Orchestrator: signed build, the user's install walk, release v0.2.0
+- [x] P6.10 Orchestrator: signed build, the user's install walk, release v0.2.0 (done 2026-11-14, signed, walked over 0.1.2)
 - [ ] P6.11 **USER** Edit text in a real PDF and check it in Acrobat, Chrome and Edge (`docs/user-checks-edit.md`)
 
 ## Phase 7 - fixes before 0.2.0 ships (spec 22, added 2026-11-13)
